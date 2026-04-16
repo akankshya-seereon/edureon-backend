@@ -34,17 +34,22 @@ const DepartmentModel = {
             (institute_code, department_name, department_code, head, lead_role, category, type, description, room_number) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
+        
+        // 🚀 Helper: Converts frontend empty strings '' to MySQL NULLs to prevent crashes
+        const sanitize = (val) => (val === '' || val === undefined ? null : val);
+
         const values = [
             instituteId,
-            data.name || null,
-            data.department_code || null,
-            data.hodId || null,      
-            data.leadRole || null,   
-            data.category,           // 🚀 The field that stops the MySQL crash
-            data.type || 'Academic',
-            data.description || null,
-            data.roomNumber || null  
+            sanitize(data.name),
+            sanitize(data.department_code),
+            sanitize(data.hodId),      
+            sanitize(data.leadRole),   
+            sanitize(data.category),             
+            data.type || 'Academic', 
+            sanitize(data.description),
+            sanitize(data.roomNumber)  
         ];
+        
         try {
             const [result] = await db.query(query, values);
             return result.insertId;
@@ -55,17 +60,35 @@ const DepartmentModel = {
     },
 
     update: async (id, instituteId, data) => {
+        // 🚀 We use COALESCE so if the frontend doesn't send a field (like 'type'), it keeps the existing value!
         const query = `
             UPDATE departments 
-            SET department_name = ?, department_code = ?, head = ?, lead_role = ?, 
-                category = ?, description = ?, room_number = ?, type = ?
+            SET department_name = ?, 
+                department_code = ?, 
+                head = ?, 
+                lead_role = COALESCE(?, lead_role), 
+                category = ?, 
+                description = COALESCE(?, description), 
+                room_number = ?, 
+                type = COALESCE(?, type)
             WHERE id = ? AND institute_code = ?
         `;
+
+        const sanitize = (val) => (val === '' || val === undefined ? null : val);
+
         const values = [
-            data.name || null, data.department_code || null, data.hodId || null, data.leadRole || null,
-            data.category || null, data.description || null, data.roomNumber || null, data.type || 'Academic',
-            id, instituteId
+            sanitize(data.name), 
+            sanitize(data.department_code), 
+            sanitize(data.hodId), 
+            sanitize(data.leadRole),
+            sanitize(data.category), 
+            sanitize(data.description), 
+            sanitize(data.roomNumber), 
+            sanitize(data.type),
+            id, 
+            instituteId
         ];
+        
         try {
             const [result] = await db.query(query, values);
             return result.affectedRows;

@@ -2,14 +2,34 @@ const express = require('express');
 const router = express.Router();
 const departmentController = require('../controllers/departmentController');
 
-// 🚀 Protect all routes using your middleware
+/**
+ * 🔒 AUTHENTICATION & CONTEXT MIDDLEWARES
+ * Ensure the user is logged in and the institute context is captured.
+ */
 const { verifyToken } = require('../middlewares/authMiddleware');
+// If you have a separate middleware to inject instituteId from the headers/JWT, 
+// make sure it is included here.
 router.use(verifyToken);
 
-// 🚀 Map the endpoints to the correct controller functions
+/**
+ * 🏢 DEPARTMENT ROUTES
+ * Base URL: /admin/departments (defined in your main server.js/app.js)
+ */
+
+// ─── READ ───
+// Fetches all departments for the current institute (including HOD names)
 router.get('/', departmentController.getDepartments);
+
+// ─── CREATE ───
+// Adds a new department and assigns an HOD (if provided)
 router.post('/', departmentController.createDepartment);
-router.put('/:id', departmentController.updateDepartment); 
+
+// ─── UPDATE ───
+// 🚀 Matches the frontend Inline Edit: PUT /admin/departments/:id
+router.put('/:id', departmentController.updateDepartment);
+
+// ─── DELETE ───
+// Removes a department (Controller now handles if it's linked to other data)
 router.delete('/:id', departmentController.deleteDepartment);
 
 module.exports = router;
