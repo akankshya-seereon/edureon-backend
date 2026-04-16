@@ -47,7 +47,6 @@ const infrastructureRoutes = require('./src/instituteadmin/routes/infrastructure
 const adminAttendanceRoutes = require('./src/instituteadmin/routes/attendanceRoutes'); 
 const adminFacultyRoutes = require('./src/instituteadmin/routes/facultyRoutes');
 const studentRoutes = require('./src/instituteadmin/routes/studentRoutes');
-const academicRoutes = require('./src/instituteadmin/routes/academicRoutes');
 const adminExamRoutes = require('./src/instituteadmin/routes/examRoutes'); 
 const batchRoutes = require('./src/instituteadmin/routes/batchRoutes');
 const expenseRoutes = require('./src/instituteadmin/routes/expenseRoutes');
@@ -109,7 +108,7 @@ app.use('/api/admin/report', reportRoutes);
 app.use('/api/admin/settings', settingRoutes);
 app.use('/api/admin/exams', adminExamRoutes);
 app.use('/api/admin/certificates', certificateRoutes);
-app.use('/api/admin', academicRoutes); // Catch-all for basic academic routes
+
 app.use('/api/admin/programs', academicprogramRoutes);
 app.use('/api/admin/departments', departmentRoutes);
 app.use('/api/admin/employees', employeeRoutes); // 🚀 Mounted Employee

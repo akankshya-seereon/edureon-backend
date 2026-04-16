@@ -6,7 +6,6 @@ const path = require('path');
 const fs = require('fs');
 
 // 1. Ensure upload directory exists
-// 🚀 FIX: Changed to 3 levels up to correctly target 'server/uploads/employee_docs'
 const uploadDir = path.join(__dirname, '../../../uploads/employee_docs');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -18,13 +17,12 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        // Creates a unique filename: fieldname-timestamp.extension
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
     }
 });
 
-// 3. File Filter (Security: Only allow images and PDFs)
+// 3. File Filter
 const fileFilter = (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|webp|pdf/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -43,33 +41,39 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// 4. Define expected file fields from the Employee.jsx UI
-// 🚀 FIX: Added 'otherDocs' so Multer doesn't crash when extra files are uploaded!
 const uploadFields = upload.fields([
     { name: 'profilePhoto', maxCount: 1 },
     { name: 'panCard', maxCount: 1 },
     { name: 'aadhaarCard', maxCount: 1 },
     { name: 'degreeCertificate', maxCount: 1 },
     { name: 'experienceLetter', maxCount: 1 },
-    { name: 'otherDocs', maxCount: 10 } // <-- MUST BE HERE
+    { name: 'otherDocs', maxCount: 10 } 
 ]);
 
-// 5. POST Route with Error Handling Middleware
+// ─── API ROUTES ───
+
+// POST: Register Employee
 router.post('/register', (req, res, next) => {
     uploadFields(req, res, (err) => {
-        if (err instanceof multer.MulterError) {
-            console.error("Multer Error:", err);
-            return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
-        } else if (err) {
-            console.error("Unknown Upload Error:", err);
-            return res.status(400).json({ success: false, message: err.message });
-        }
-        // Everything went fine, proceed to controller
+        if (err instanceof multer.MulterError) return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+        if (err) return res.status(400).json({ success: false, message: err.message });
         next();
     });
 }, employeeController.registerEmployee);
 
-// 6. 🚀 NEW: GET Route for listing (Used by Department.jsx HOD Dropdown)
+// GET: List All Employees (MUST be above /:id)
 router.get('/list', employeeController.getAllEmployees);
+
+// GET: Single Employee Profile
+router.get('/:id', employeeController.getEmployeeById);
+
+// PUT: Update Employee
+router.put('/:id', (req, res, next) => {
+    uploadFields(req, res, (err) => {
+        if (err instanceof multer.MulterError) return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
+        if (err) return res.status(400).json({ success: false, message: err.message });
+        next();
+    });
+}, employeeController.updateEmployee);
 
 module.exports = router;

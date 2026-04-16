@@ -1,11 +1,6 @@
 const db = require('../../config/db');
 
 const DepartmentModel = {
-    /**
-     * 🔍 Fetch all departments with HOD names
-     * Joins with 'employees' table.
-     * Uses aliases (AS) to match exactly what your React state expects.
-     */
     getAll: async (instituteId) => {
         const query = `
             SELECT 
@@ -33,29 +28,23 @@ const DepartmentModel = {
         }
     },
 
-    /**
-     * ✨ Create a new Department
-     * 🚀 Maps Frontend CamelCase -> Database snake_case
-     */
     create: async (instituteId, data) => {
         const query = `
             INSERT INTO departments 
             (institute_code, department_name, department_code, head, lead_role, category, type, description, room_number) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        
         const values = [
             instituteId,
             data.name || null,
             data.department_code || null,
-            data.hodId || null,      // Maps to 'head'
-            data.leadRole || null,   // Maps to 'lead_role'
-            data.category,           // Mandatory per your DESC output
+            data.hodId || null,      
+            data.leadRole || null,   
+            data.category,           // 🚀 The field that stops the MySQL crash
             data.type || 'Academic',
             data.description || null,
-            data.roomNumber || null  // Maps to 'room_number'
+            data.roomNumber || null  
         ];
-
         try {
             const [result] = await db.query(query, values);
             return result.insertId;
@@ -65,37 +54,18 @@ const DepartmentModel = {
         }
     },
 
-    /**
-     * 📝 Update an existing Department
-     */
     update: async (id, instituteId, data) => {
         const query = `
             UPDATE departments 
-            SET 
-                department_name = ?, 
-                department_code = ?, 
-                head = ?, 
-                lead_role = ?, 
-                category = ?, 
-                description = ?, 
-                room_number = ?, 
-                type = ?
+            SET department_name = ?, department_code = ?, head = ?, lead_role = ?, 
+                category = ?, description = ?, room_number = ?, type = ?
             WHERE id = ? AND institute_code = ?
         `;
-        
         const values = [
-            data.name || null,
-            data.department_code || null,
-            data.hodId || null,
-            data.leadRole || null,
-            data.category || null,
-            data.description || null,
-            data.roomNumber || null,
-            data.type || 'Academic',
-            id,
-            instituteId
+            data.name || null, data.department_code || null, data.hodId || null, data.leadRole || null,
+            data.category || null, data.description || null, data.roomNumber || null, data.type || 'Academic',
+            id, instituteId
         ];
-
         try {
             const [result] = await db.query(query, values);
             return result.affectedRows;
@@ -105,9 +75,6 @@ const DepartmentModel = {
         }
     },
 
-    /**
-     * 🗑️ Delete a Department
-     */
     delete: async (id, instituteId) => {
         try {
             const [result] = await db.query(
