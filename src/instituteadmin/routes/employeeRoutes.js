@@ -76,4 +76,7 @@ router.put('/:id', (req, res, next) => {
     });
 }, employeeController.updateEmployee);
 
+// 🚀 NEW: DELETE Employee Route (This was missing!)
+router.delete('/:id', employeeController.deleteEmployee);
+
 module.exports = router;

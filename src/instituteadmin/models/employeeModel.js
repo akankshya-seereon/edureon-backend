@@ -3,13 +3,14 @@ const db = require('../../config/db');
 const Employee = {
   // 1. Create a new employee
   create: async (data) => {
+    // 🚀 NEW: Added institute_code to the columns
     const query = `
       INSERT INTO employees 
       (staffType, firstName, lastName, email, phone, gender, dob, 
        bloodGroup, qualification, designation, employeeId, joiningDate, 
        departmentId, address, password, panNumber, aadhaarNumber, 
-       profilePhoto, panCardDoc, aadhaarCardDoc, degreeDoc, experienceDoc) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       profilePhoto, panCardDoc, aadhaarCardDoc, degreeDoc, experienceDoc, institute_code) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const values = [
@@ -17,7 +18,8 @@ const Employee = {
       data.gender, data.dob, data.bloodGroup, data.qualification, data.designation, 
       data.employeeId, data.joiningDate, data.departmentId, data.address, 
       data.password, data.panNumber, data.aadhaarNumber, 
-      data.profilePhoto, data.panCardDoc, data.aadhaarCardDoc, data.degreeDoc, data.experienceDoc
+      data.profilePhoto, data.panCardDoc, data.aadhaarCardDoc, data.degreeDoc, data.experienceDoc,
+      data.institute_code // 🚀 NEW
     ];
 
     const [result] = await db.query(query, values);
@@ -52,7 +54,7 @@ const Employee = {
     return result.affectedRows;
   },
 
-  // 5. Delete an employee (🚀 NEW: Required for the Directory Delete button!)
+  // 5. Delete an employee
   delete: async (id) => {
     const query = "DELETE FROM employees WHERE id = ?";
     const [result] = await db.query(query, [id]);
