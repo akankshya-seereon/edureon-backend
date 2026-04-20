@@ -1,10 +1,10 @@
-const AuthModel = require('../model/authModel'); // Check path
+const AuthModel = require('../model/authModel'); 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 exports.login = async (req, res) => {
   console.log("\n-----------------------------------------");
-  console.log(" 🎓 NEW FACULTY LOGIN ATTEMPT");
+  console.log(" 🎓 NEW EMPLOYEE LOGIN ATTEMPT");
   console.log("- Email:", req.body.email);
   console.log("-----------------------------------------");
 
@@ -41,7 +41,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // 4. 🚀 FIX: Verify Password (with a fallback for testing plain-text passwords)
+    // 4. 🚀 Verify Password (with a fallback for testing plain-text passwords)
     let isMatch = false;
     const dbPassword = faculty.password || faculty.password_hash;
     
@@ -49,11 +49,9 @@ exports.login = async (req, res) => {
        return res.status(401).json({ success: false, message: 'Password not set for this account.' });
     }
 
-    // Check if the password looks like a bcrypt hash (starts with $2)
     if (dbPassword.startsWith('$2')) {
       isMatch = await bcrypt.compare(password, dbPassword);
     } else {
-      // Fallback: If you manually typed '12345678' in your database for testing
       isMatch = (password === dbPassword);
     }
 
@@ -69,11 +67,14 @@ exports.login = async (req, res) => {
       throw new Error("CRITICAL: process.env.JWT_SECRET is missing!");
     }
 
+    // 🚀 DYNAMIC ROLE: Grab their actual designation from the DB and make it lowercase!
+    const trueRole = (faculty.designation || 'faculty').toLowerCase();
+
     // 5. Create the Token
     const token = jwt.sign(
       { 
         id: faculty.id, 
-        role: roleType || 'faculty', // Allow HOD / Faculty roles dynamically
+        role: trueRole, // Send their actual designation!
         institute_code: faculty.institute_code || finalInstituteCode, 
         department_id: faculty.department_id || faculty.departmentId    
       },
@@ -84,9 +85,9 @@ exports.login = async (req, res) => {
     // 6. 🎯 Set the Token as an HTTP-Only Cookie
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // true for HTTPS, false for localhost
-      sameSite: 'lax',     // MUST be 'lax' for localhost cross-port API calls
-      path: '/',           // CRITICAL: This makes the cookie visible to all routes
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',     
+      path: '/',           
       maxAge: 24 * 60 * 60 * 1000 
     });
 
@@ -95,18 +96,18 @@ exports.login = async (req, res) => {
         await AuthModel.updateLastLogin(faculty.id);
     }
 
-    console.log(" ✅ RESULT: Login Successful & Cookie Set!");
+    console.log(` ✅ RESULT: Login Successful! Assumed Role: [${trueRole.toUpperCase()}]`);
 
     // 8. Return user data AND the token in the JSON body
     res.status(200).json({
       success: true,
       message: "Login successful",
-      token: token, // Added back to JSON so your authService doesn't break!
+      token: token, 
       user: {
         id: faculty.id,
         name: faculty.name || `${faculty.firstName || ''} ${faculty.lastName || ''}`.trim(), 
         email: faculty.email,
-        role: roleType || 'faculty',
+        role: trueRole, // React uses this to route them to the dashboard!
         institute_code: faculty.institute_code || finalInstituteCode,
         department_id: faculty.department_id || faculty.departmentId
       }
@@ -121,7 +122,6 @@ exports.login = async (req, res) => {
 // ─── LOGOUT ROUTE ───
 exports.logout = async (req, res) => {
   try {
-    // Clear the HTTP-Only cookie securely
     res.clearCookie('token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -129,7 +129,7 @@ exports.logout = async (req, res) => {
       path: '/'
     });
     
-    console.log("👋 Faculty securely logged out.");
+    console.log("👋 Employee securely logged out.");
     return res.status(200).json({ success: true, message: "Logged out successfully" });
   } catch (err) {
     console.error('❌ Logout Error:', err);
