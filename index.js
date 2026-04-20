@@ -12,12 +12,9 @@ require('./src/config/db');
  
 const app = express();
 
-// ==========================================
-// 1. GLOBAL MIDDLEWARE
-// ==========================================
 app.use(helmet());
 app.use(cors({
-  // 🚀 FIXED: Changed fallback to 5173 to match your Vite frontend!
+  //  FIXED: Changed fallback to 5173 to match your Vite frontend!
   origin:      process.env.CLIENT_URL || 'http://localhost:5173', 
   credentials: true,
 }));
