@@ -5,26 +5,27 @@ const db = require('../../config/db');
  */
 exports.getMyCourses = async (req, res) => {
   try {
-    const instituteCode = req.user.institute_code || req.user.instituteCode || req.user.code;
+    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
 
-    if (!instituteCode) {
-      return res.status(400).json({ success: false, message: "Institute Code missing." });
+    if (!instituteId) {
+      return res.status(400).json({ success: false, message: "Institute ID missing." });
     }
 
+    // 🚀 FIXED: Replaced '0 AS modules' with a subquery to count actual modules!
     const query = `
       SELECT 
-        id, 
-        course_name AS courseTitle, 
-        course_code AS class,         
-        duration AS academicYear,     
-        type AS status,               
-        0 AS modules                  
-      FROM courses 
-      WHERE institute_code = ?
-      ORDER BY id DESC
+        c.id, 
+        c.name AS courseTitle, 
+        c.code AS class,        
+        c.duration AS academicYear,     
+        IF(c.is_active = 1, 'Active', 'Draft') AS status,               
+        (SELECT COUNT(*) FROM course_modules cm WHERE cm.course_id = c.id) AS modules                  
+      FROM courses c
+      WHERE c.institute_id = ?
+      ORDER BY c.id DESC
     `;
 
-    const [rows] = await db.query(query, [instituteCode]);
+    const [rows] = await db.query(query, [instituteId]);
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error("Fetch Courses Error:", error);
@@ -38,26 +39,30 @@ exports.getMyCourses = async (req, res) => {
 exports.createCourse = async (req, res) => {
   try {
     const { courseTitle, className, academicYear, status } = req.body;
-    const instituteCode = req.user.institute_code || req.user.instituteCode || req.user.code;
+    
+    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
     const departmentId = req.user.department_id || 1; 
 
-    if (!instituteCode) {
-      return res.status(400).json({ success: false, message: "Institute Code missing from token." });
+    if (!instituteId) {
+      return res.status(400).json({ success: false, message: "Institute ID missing from token." });
     }
+
+    // Convert React status string ('Active'/'Draft' or 'Published') to TinyInt (1/0) for DB
+    const isActive = (status === 'Active' || status === 'Published') ? 1 : 0;
 
     const query = `
       INSERT INTO courses 
-      (institute_code, department_id, course_name, course_code, duration, type) 
+      (institute_id, department_id, name, code, duration, is_active) 
       VALUES (?, ?, ?, ?, ?, ?)
     `;
 
     const [result] = await db.query(query, [
-      instituteCode,
+      instituteId,
       departmentId,
       courseTitle,
       className,
       academicYear,
-      status || 'Draft'
+      isActive
     ]);
 
     res.status(201).json({ success: true, message: "Course saved successfully!", id: result.insertId });
@@ -73,15 +78,20 @@ exports.createCourse = async (req, res) => {
 exports.getCourseById = async (req, res) => {
   try {
     const { id } = req.params;
-    const instituteCode = req.user.institute_code || req.user.instituteCode || req.user.code;
+    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
 
     const query = `
-      SELECT id, course_name AS courseTitle, course_code AS class, duration AS academicYear, type AS status
+      SELECT 
+        id, 
+        name AS courseTitle, 
+        code AS class, 
+        duration AS academicYear, 
+        IF(is_active = 1, 'Published', 'Draft') AS status
       FROM courses 
-      WHERE id = ? AND institute_code = ?
+      WHERE id = ? AND institute_id = ?
     `;
 
-    const [rows] = await db.query(query, [id, instituteCode]);
+    const [rows] = await db.query(query, [id, instituteId]);
     if (rows.length === 0) return res.status(404).json({ success: false, message: "Course not found" });
 
     res.status(200).json({ success: true, data: rows[0] });
@@ -173,14 +183,14 @@ exports.saveModules = async (req, res) => {
 exports.deleteCourse = async (req, res) => {
   try {
     const { id } = req.params;
-    const instituteCode = req.user.institute_code || req.user.instituteCode || req.user.code;
+    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
 
     const [result] = await db.query(
-      "DELETE FROM courses WHERE id = ? AND institute_code = ?", 
-      [id, instituteCode]
+      "DELETE FROM courses WHERE id = ? AND institute_id = ?", 
+      [id, instituteId]
     );
 
-    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Not found" });
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "Not found or unauthorized" });
 
     res.status(200).json({ success: true, message: "Course deleted successfully" });
   } catch (error) {
