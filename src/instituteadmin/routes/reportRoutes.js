@@ -1,10 +1,19 @@
-// src/instituteadmin/routes/reportRoutes.js
 const express = require('express');
 const router = express.Router();
 const reportController = require('../controllers/reportController');
-const { verifyToken } = require('../middlewares/authMiddleware');
 
-// Ensure this says 'reports' (plural) if that's what you want in the URL
-router.get('/reports/generate', verifyToken, reportController.generateReport);
+// 🚀 THE FIX: Changed 'verifyAdmin' to 'verifyToken' 
+// (If your file exports something else like 'verifyInstituteAdmin', use that instead!)
+const { verifyToken } = require('../Middlewares/authMiddleware');
+
+/**
+ * 🔐 BASE URL: /api/admin/reports (Set in index.js)
+ */
+
+// 📍 1. GET: Generate the actual report data
+router.get('/generate', verifyToken, reportController.generateReport);
+
+// 📍 2. GET: Fetch dynamic courses and departments for React Dropdowns
+router.get('/filters', verifyToken, reportController.getFilterOptions);
 
 module.exports = router;

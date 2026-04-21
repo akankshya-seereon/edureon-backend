@@ -101,7 +101,7 @@ app.use('/api/admin/expenses', expenseRoutes);
 app.use('/api/admin/salary', salaryRoutes);
 app.use('/api/admin/fees', feeRoutes);
 app.use('/api/admin/notifications', notificationRoutes);
-app.use('/api/admin/report', reportRoutes);
+app.use('/api/admin/reports', reportRoutes);
 app.use('/api/admin/settings', settingRoutes);
 app.use('/api/admin/exams', adminExamRoutes);
 app.use('/api/admin/certificates', certificateRoutes);
