@@ -57,7 +57,7 @@ const academicprogramRoutes = require('./src/instituteadmin/routes/academicprogr
 const departmentRoutes = require('./src/instituteadmin/routes/departmentRoutes');
 const employeeRoutes = require('./src/instituteadmin/routes/employeeRoutes'); // 🚀 Added Employee
 const syllabusRoutes = require('./src/instituteadmin/routes/SyllabusRoutes'); // 🚀 Added Syllabus
-
+const classlistRoutes = require('./src/instituteadmin/routes/classlistRoutes'); // 🚀 Added ClassList
 // --- Faculty Portal ---
 const facultyAuthRoutes = require('./src/faculty/routes/authRoutes');
 const profileRoutes = require('./src/faculty/routes/profileRoutes');
@@ -105,7 +105,7 @@ app.use('/api/admin/reports', reportRoutes);
 app.use('/api/admin/settings', settingRoutes);
 app.use('/api/admin/exams', adminExamRoutes);
 app.use('/api/admin/certificates', certificateRoutes);
-
+app.use('/api/admin/classes', classlistRoutes); // 🚀 Mounted ClassLis            t
 app.use('/api/admin/programs', academicprogramRoutes);
 app.use('/api/admin/departments', departmentRoutes);
 app.use('/api/admin/employees', employeeRoutes); // 🚀 Mounted Employee

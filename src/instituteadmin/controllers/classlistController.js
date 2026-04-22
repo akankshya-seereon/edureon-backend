@@ -1,82 +1,121 @@
-const ClassListModel = require('../models/classlistModel');
+const ClassModel = require('../models/classlistModel');
+// 🚀 REQUIRED: We need the db connection to fetch the dropdown lists!
+const db = require('../../config/db'); 
 
-// GET ALL CLASSES FOR THE INSTITUTE
 exports.getAllClasses = async (req, res) => {
-  try {
-    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
-    
-    // Fetch directly from the Model
-    const rows = await ClassListModel.getAllByInstitute(instituteId);
+    try {
+        const instituteId = req.user.institute_id || req.user.id;
+        
+        if (!instituteId) {
+            return res.status(400).json({ success: false, message: "Institute ID is missing." });
+        }
 
-    // Map DB snake_case columns back to React camelCase state
-    const data = rows.map(row => ({
-      id: row.id,
-      className: row.class_name,
-      program: row.program,
-      department: row.department,
-      subject: row.subject,
-      facultyAssigned: row.faculty_assigned,
-      academicYear: row.academic_year,
-      semester: row.semester,
-      section: row.section,
-      maxStudents: row.max_students,
-      students: row.enrolled_students || 0,
-      description: row.description,
-      // Parse the JSON string back into a JavaScript array for React
-      schedule: typeof row.schedule === 'string' ? JSON.parse(row.schedule) : row.schedule,
-      modules: row.modules || 0
-    }));
-
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    console.error("Admin Fetch Classes Error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
+        const classes = await ClassModel.findAll(instituteId);
+        res.status(200).json({ success: true, data: classes });
+    } catch (error) {
+        console.error("Get All Classes Error:", error);
+        res.status(500).json({ success: false, message: "Failed to fetch classes." });
+    }
 };
 
-// CREATE A NEW CLASS
 exports.createClass = async (req, res) => {
-  try {
-    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
+    console.log("Data Received from Frontend (CREATE):", req.body);
     
-    // Call the model's create method
-    const insertId = await ClassListModel.create({ instituteId, ...req.body });
+    try {
+        const data = req.body;
+        data.institute_id = req.user.institute_id || req.user.id;
+        
+        if (!data.className || !data.department) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Class Name and Department are required." 
+            });
+        }
 
-    res.status(201).json({ success: true, message: "Class created successfully", id: insertId });
-  } catch (error) {
-    console.error("Admin Create Class Error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
+        const result = await ClassModel.create(data);
+
+        res.status(201).json({ 
+            success: true, 
+            message: "Class created successfully!", 
+            classId: result.insertId 
+        });
+    } catch (error) {
+        console.error("Create Class Error:", error);
+        res.status(500).json({ success: false, message: "Failed to create class." });
+    }
 };
 
-// UPDATE AN EXISTING CLASS
 exports.updateClass = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
+    console.log("Data Received from Frontend (UPDATE):", req.body);
+    
+    try {
+        const { id } = req.params;
+        const data = req.body;
 
-    // Call the model's update method
-    await ClassListModel.update(id, instituteId, req.body);
+        if (!data.className || !data.department) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Class Name and Department are required." 
+            });
+        }
 
-    res.status(200).json({ success: true, message: "Class updated successfully" });
-  } catch (error) {
-    console.error("Admin Update Class Error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
+        const updated = await ClassModel.update(id, data);
+        
+        if (updated.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: "Class not found." });
+        }
+
+        res.status(200).json({ success: true, message: "Class updated successfully!" });
+    } catch (error) {
+        console.error("Update Class Error:", error);
+        res.status(500).json({ success: false, message: "Failed to update class." });
+    }
 };
 
-// DELETE A CLASS
 exports.deleteClass = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const instituteId = req.user.institute_id || req.user.instituteId || req.user.id;
+    try {
+        const { id } = req.params;
+        
+        const deleted = await ClassModel.delete(id);
 
-    // Call the model's delete method
-    await ClassListModel.delete(id, instituteId);
-    
-    res.status(200).json({ success: true, message: "Class deleted successfully" });
-  } catch (error) {
-    console.error("Admin Delete Class Error:", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
+        if (deleted.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: "Class not found." });
+        }
+
+        res.status(200).json({ success: true, message: "Class deleted successfully!" });
+    } catch (error) {
+        console.error("Delete Class Error:", error);
+        res.status(500).json({ success: false, message: "Failed to delete class." });
+    }
+};
+
+// 🚀 NEW: Fetch real dropdown data for the frontend modal
+exports.getFormData = async (req, res) => {
+    try {
+        const [departments] = await db.query("SELECT * FROM departments");
+        const [subjects] = await db.query("SELECT * FROM subjects"); 
+        const [rooms] = await db.query("SELECT * FROM rooms"); 
+        
+        // 🚀 THE FIX: Pulling faculty correctly from the employees master table
+        // We concatenate firstName and lastName so the React frontend receives a single "name" field to display
+        const [faculty] = await db.query(`
+            SELECT id, CONCAT(firstName, ' ', lastName) AS name 
+            FROM employees 
+            WHERE staffType = 'Academic' AND status = 'Active'
+        `); 
+
+        res.status(200).json({
+            success: true,
+            data: {
+                departments,
+                subjects,
+                faculty,
+                rooms
+            }
+        });
+    } catch (error) {
+        // If it STILL crashes, this will print the EXACT reason in your terminal
+        console.error("Form Data Fetch Error ❌:", error.message);
+        res.status(500).json({ success: false, message: "Failed to load dropdown data." });
+    }
 };
