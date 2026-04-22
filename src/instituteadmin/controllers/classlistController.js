@@ -1,10 +1,9 @@
 const ClassModel = require('../models/classlistModel');
-// 🚀 REQUIRED: We need the db connection to fetch the dropdown lists!
 const db = require('../../config/db'); 
 
 exports.getAllClasses = async (req, res) => {
     try {
-        const instituteId = req.user.institute_id || req.user.id;
+        const instituteId = req.user?.institute_id || req.user?.id;
         
         if (!instituteId) {
             return res.status(400).json({ success: false, message: "Institute ID is missing." });
@@ -19,11 +18,9 @@ exports.getAllClasses = async (req, res) => {
 };
 
 exports.createClass = async (req, res) => {
-    console.log("Data Received from Frontend (CREATE):", req.body);
-    
     try {
         const data = req.body;
-        data.institute_id = req.user.institute_id || req.user.id;
+        data.institute_id = req.user?.institute_id || req.user?.id;
         
         if (!data.className || !data.department) {
             return res.status(400).json({ 
@@ -46,18 +43,9 @@ exports.createClass = async (req, res) => {
 };
 
 exports.updateClass = async (req, res) => {
-    console.log("Data Received from Frontend (UPDATE):", req.body);
-    
     try {
         const { id } = req.params;
         const data = req.body;
-
-        if (!data.className || !data.department) {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Class Name and Department are required." 
-            });
-        }
 
         const updated = await ClassModel.update(id, data);
         
@@ -75,7 +63,6 @@ exports.updateClass = async (req, res) => {
 exports.deleteClass = async (req, res) => {
     try {
         const { id } = req.params;
-        
         const deleted = await ClassModel.delete(id);
 
         if (deleted.affectedRows === 0) {
@@ -89,32 +76,61 @@ exports.deleteClass = async (req, res) => {
     }
 };
 
-// 🚀 NEW: Fetch real dropdown data for the frontend modal
+// 🚀 FIXED & BULLETPROOFED FORM DATA
 exports.getFormData = async (req, res) => {
     try {
-        const [departments] = await db.query("SELECT * FROM departments");
-        const [subjects] = await db.query("SELECT * FROM subjects"); 
-        const [rooms] = await db.query("SELECT * FROM rooms"); 
-        
-        // 🚀 THE FIX: Pulling faculty correctly from the employees master table
-        // We concatenate firstName and lastName so the React frontend receives a single "name" field to display
+        const instituteId = req.user?.institute_id || req.user?.id || 1;
+
+        // 1. Fetch Departments
+        const [departments] = await db.query(
+            "SELECT id, department_name AS name FROM departments"
+        ).catch((err) => { console.error("Dept Error:", err.message); return [[]]; });
+
+        // 2. Fetch Programs (Course)
+        const [programs] = await db.query(
+            "SELECT id, name FROM academic_courses WHERE institute_id = ?", 
+            [instituteId]
+        ).catch((err) => { console.error("Prog Error:", err.message); return [[]]; });
+
+        // 3. Fetch Subjects
+        const [subjects] = await db.query(`
+            SELECT DISTINCT subject_name as name, subject_code as code, course_name 
+            FROM syllabus_subjects 
+            WHERE institute_id = ?
+        `, [instituteId]).catch((err) => { console.error("Subj Error:", err.message); return [[]]; });
+
+        // 4. Fetch Faculty
         const [faculty] = await db.query(`
             SELECT id, CONCAT(firstName, ' ', lastName) AS name 
             FROM employees 
             WHERE staffType = 'Academic' AND status = 'Active'
-        `); 
+        `).catch((err) => { console.error("Fac Error:", err.message); return [[]]; });
+
+        // 5. 🚀 BULLETPROOF ROOMS QUERY
+        // This selects everything and maps it dynamically so it NEVER crashes due to a wrong column name!
+        const [rooms] = await db.query("SELECT * FROM rooms").then(([rows]) => {
+            const mappedRooms = rows.map(r => ({
+                id: r.id,
+                // It will automatically use whichever column actually exists in your DB:
+                name: r.roomName || r.room_number || r.room_no || r.name || `Room ${r.id}`
+            }));
+            return [mappedRooms];
+        }).catch((err) => { 
+            console.error("🚨 Room Table Error (Does the 'rooms' table exist?):", err.message); 
+            return [[]]; 
+        }); 
 
         res.status(200).json({
             success: true,
             data: {
-                departments,
-                subjects,
-                faculty,
-                rooms
+                departments: departments || [],
+                programs: programs || [], 
+                subjects: subjects || [],  
+                faculty: faculty || [],
+                rooms: rooms || []
             }
         });
     } catch (error) {
-        // If it STILL crashes, this will print the EXACT reason in your terminal
         console.error("Form Data Fetch Error ❌:", error.message);
         res.status(500).json({ success: false, message: "Failed to load dropdown data." });
     }

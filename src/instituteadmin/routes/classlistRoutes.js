@@ -4,41 +4,47 @@ const classlistController = require('../controllers/classlistController');
 const authMiddleware = require('../middlewares/authMiddleware');
 
 // 🛡️ 1. SAFE MIDDLEWARE EXTRACTOR
-// Grabs your verifyAdmin function. If it's missing, it creates a temporary 
-// fallback function that prevents a server crash and warns you instead.
+// Grabs your verifyAdmin or verifyToken function. Prevents server crash if missing.
 const verifyAdmin = authMiddleware.verifyAdmin || authMiddleware.verifyToken || ((req, res, next) => {
-    console.error("❌ ROUTE ERROR: 'verifyAdmin' middleware is missing or not exported correctly.");
+    console.error("❌ ROUTE ERROR: Authentication middleware is missing or not exported correctly.");
     return res.status(500).json({ success: false, message: "Server route configuration error." });
 });
 
 // 🛡️ 2. CRASH-PROOF CONTROLLER WRAPPER
-// This function stops the dreaded "argument handler must be a function" Express crash.
-// If your controller function is undefined, it handles it gracefully.
+// Stops the "argument handler must be a function" Express crash.
 const safeFn = (controllerFunction, functionName) => {
     if (typeof controllerFunction !== 'function') {
         console.error(`❌ ROUTE ERROR: '${functionName}' is missing from classlistController.js!`);
-        return (req, res) => res.status(500).json({ success: false, message: `Controller ${functionName} missing.` });
+        return (req, res) => res.status(500).json({ success: false, message: `Controller ${functionName} missing on server.` });
     }
     return controllerFunction;
 };
 
 // 🚀 3. MOUNT ROUTES
-// Path: /api/admin/classes
+// Base Path mapped in app.js: /api/admin/classes
 
-// GET: Fetch all classes
-router.get('/', verifyAdmin, safeFn(classlistController.getAllClasses, 'getAllClasses'));
+// ==========================================
+// ⚠️ STATIC ROUTES (MUST GO BEFORE /:id)
+// ==========================================
 
-// 🚀 NEW: Fetch form dropdown data (MUST BE BEFORE /:id ROUTES!)
-// This is the magic route that sends your departments, faculty, and subjects to React.
+// Fetch form dropdown data (Departments, Programs, Subjects, Faculty)
 router.get('/form-data', verifyAdmin, safeFn(classlistController.getFormData, 'getFormData'));
 
-// POST: Create a new class
+// Fetch all classes
+router.get('/', verifyAdmin, safeFn(classlistController.getAllClasses, 'getAllClasses'));
+
+// Create a new class
 router.post('/', verifyAdmin, safeFn(classlistController.createClass, 'createClass'));
 
-// PUT: Update a specific class by ID
+// ==========================================
+// ⚠️ DYNAMIC ID ROUTES (MUST GO LAST)
+// ==========================================
+
+// Update a specific class by ID
 router.put('/:id', verifyAdmin, safeFn(classlistController.updateClass, 'updateClass'));
 
-// DELETE: Remove a specific class by ID
+// Delete a specific class by ID
 router.delete('/:id', verifyAdmin, safeFn(classlistController.deleteClass, 'deleteClass'));
+
 
 module.exports = router;
