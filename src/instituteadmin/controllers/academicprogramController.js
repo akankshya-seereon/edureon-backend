@@ -1,4 +1,5 @@
 const AcademicProgramModel = require('../models/academicprogramModel');
+const db = require('../../config/db'); // 🚀 NEW: Added to directly fetch buildings
 
 // 🛡️ HELPER: Securely get Institute ID
 const getInstituteId = (req) => {
@@ -10,7 +11,30 @@ const getInstituteId = (req) => {
   return 1; 
 };
 
-// ─── ACADEMIC PROGRAMS (TREE) ────────────────────────────────────────────
+// ─── 🏢 INFRASTRUCTURE (BUILDINGS) ───────────────────────────────────────
+
+exports.getBuildings = async (req, res) => {
+  try {
+    const instId = getInstituteId(req);
+    
+    // 🚀 Fetches buildings specifically for the logged-in institute
+    // Adjust 'buildings' and 'building_name' to match your actual database table/columns
+    const [buildings] = await db.query(
+      `SELECT id, building_name AS name FROM buildings WHERE institute_id = ?`, 
+      [instId]
+    );
+
+    res.status(200).json({ 
+      success: true, 
+      data: buildings 
+    });
+  } catch (error) {
+    console.error("🔥 DB Error [getBuildings]:", error.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch buildings.' });
+  }
+};
+
+// ─── 🎓 ACADEMIC PROGRAMS (TREE) ─────────────────────────────────────────
 
 exports.getPrograms = async (req, res) => {
   try {
@@ -27,7 +51,7 @@ exports.getPrograms = async (req, res) => {
   }
 };
 
-// ─── COURSES ─────────────────────────────────────────────────────────────
+// ─── 📚 COURSES ──────────────────────────────────────────────────────────
 
 exports.createCourse = async (req, res) => {
   try {
@@ -75,7 +99,7 @@ exports.deleteCourse = async (req, res) => {
   }
 };
 
-// ─── SPECIALIZATIONS ─────────────────────────────────────────────────────
+// ─── 🎯 SPECIALIZATIONS ──────────────────────────────────────────────────
 
 exports.createSpecialization = async (req, res) => {
   try {
@@ -125,7 +149,7 @@ exports.deleteSpecialization = async (req, res) => {
   }
 };
 
-// ─── BATCHES ─────────────────────────────────────────────────────────────
+// ─── 📅 BATCHES ──────────────────────────────────────────────────────────
 
 exports.createBatch = async (req, res) => {
   try {

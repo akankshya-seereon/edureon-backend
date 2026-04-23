@@ -3,7 +3,7 @@ const db = require('../../config/db');
 const AcademicProgramModel = {
   // ─── GET FULL NESTED ACADEMIC TREE ───────────────────────────────────────
   getFullPrograms: async (instituteId) => {
-    // 1. Get all courses
+    // 1. Get all courses for this institute
     const [courses] = await db.query(
       'SELECT * FROM courses WHERE institute_id = ? ORDER BY id DESC', 
       [instituteId]
@@ -22,9 +22,10 @@ const AcademicProgramModel = {
     );
 
     // 3. Get all batches for these courses
+    // 🚀 FIXED: Removed 'institute_id' filter here since 'course_id' already scopes it to the right institute
     const [batches] = await db.query(
-      'SELECT * FROM batches WHERE course_id IN (?) AND institute_id = ?', 
-      [safeCourseIds, instituteId]
+      'SELECT * FROM batches WHERE course_id IN (?)', 
+      [safeCourseIds]
     );
 
     // 4. Map them together into the nested structure React expects
@@ -38,19 +39,20 @@ const AcademicProgramModel = {
       semesters: course.semesters,
       building: course.building,
       evaluation: course.evaluation,
-      totalIntake: course.total_intake || 0,
-      currentIntake: course.current_intake || 0,
-      status: course.is_active ? 'Active' : 'Inactive',
+      totalIntake: 0,   // React calculates this dynamically from specializations
+      currentIntake: 0, // React calculates this dynamically from specializations
+      
       specializations: specializations
         .filter(s => s.course_id === course.id)
         .map(s => ({
           id: s.id, 
           name: s.name, 
           code: s.code, 
-          total: s.total_intake || 0, 
-          intake: s.current_intake || 0, 
-          active: s.is_active === 1 || s.is_active === true
+          total: s.total || 0, // 🚀 Aligned with DB schema
+          intake: s.intake || 0, // 🚀 Aligned with DB schema
+          active: s.active === 1 || s.active === true // 🚀 Aligned with DB schema
         })),
+        
       batches: batches
         .filter(b => b.course_id === course.id)
         .map(b => {
@@ -69,11 +71,10 @@ const AcademicProgramModel = {
           return {
             id: b.id, 
             name: b.name, 
-            startMonth: b.start_month, 
-            startYear: b.start_year, 
-            endMonth: b.end_month, 
-            endYear: b.end_year, 
-            status: b.status,
+            startMonth: b.startMonth, // 🚀 Aligned with DB schema
+            startYear: b.startYear,   // 🚀 Aligned with DB schema
+            endMonth: b.endMonth,     // 🚀 Aligned with DB schema
+            endYear: b.endYear,       // 🚀 Aligned with DB schema
             sections: parsedSections || [],
             specs: parsedSpecs || []
           };
@@ -85,7 +86,6 @@ const AcademicProgramModel = {
   createCourse: async (instituteId, data) => {
     const semesters = data.semesters ? parseInt(data.semesters, 10) : 0;
 
-    // 🚀 FIXED: Added fallback values || '' so MySQL never receives undefined
     const [result] = await db.query(
       `INSERT INTO courses (institute_id, name, code, level, duration, sem_system, semesters, building, evaluation) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -136,8 +136,9 @@ const AcademicProgramModel = {
     const total = data.total ? parseInt(data.total, 10) : 0;
     const intake = data.intake ? parseInt(data.intake, 10) : 0;
 
+    // 🚀 FIXED: Column names match exactly what was created in the DB schema
     const [result] = await db.query(
-      `INSERT INTO specializations (course_id, name, code, total_intake, current_intake, is_active) 
+      `INSERT INTO specializations (course_id, name, code, total, intake, active) 
        VALUES (?, ?, ?, ?, ?, ?)`,
       [courseId, data.name || '', data.code || '', total, intake, data.active !== false]
     );
@@ -148,9 +149,10 @@ const AcademicProgramModel = {
     const total = data.total ? parseInt(data.total, 10) : 0;
     const intake = data.intake ? parseInt(data.intake, 10) : 0;
 
+    // 🚀 FIXED: Column names matched to DB schema
     const [result] = await db.query(
-      `UPDATE specializations SET name=?, code=?, total_intake=?, current_intake=?, is_active=? WHERE id=?`,
-      [data.name || '', data.code || '', total, intake, data.active, id]
+      `UPDATE specializations SET name=?, code=?, total=?, intake=?, active=? WHERE id=?`,
+      [data.name || '', data.code || '', total, intake, data.active !== false, id]
     );
     return result.affectedRows;
   },
@@ -162,18 +164,23 @@ const AcademicProgramModel = {
 
   // ─── BATCH CRUD ──────────────────────────────────────────────────────────
   createBatch: async (data) => {
-    // Safely parse arrays into JSON strings for MySQL
     const sections = JSON.stringify(data.sections || []);
     const specs = JSON.stringify(data.specs || []);
 
+    // 🚀 FIXED: Removed 'institute_id' and 'status' (they aren't in the batches schema). 
+    // Uses correct camelCase database columns.
     const [result] = await db.query(
-      `INSERT INTO batches (institute_id, course_id, name, start_month, start_year, end_month, end_year, status, sections, specs) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO batches (course_id, name, startMonth, startYear, endMonth, endYear, sections, specs) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        data.institute_id, data.course_id, data.name || '', 
-        data.startMonth || '', data.startYear || '', 
-        data.endMonth || '', data.endYear || '', 
-        data.status || 'Active', sections, specs
+        data.course_id, 
+        data.name || '', 
+        data.startMonth || '', 
+        data.startYear || '', 
+        data.endMonth || '', 
+        data.endYear || '', 
+        sections, 
+        specs
       ]
     );
     return result.insertId;
@@ -183,12 +190,18 @@ const AcademicProgramModel = {
     const sections = JSON.stringify(data.sections || []);
     const specs = JSON.stringify(data.specs || []);
 
+    // 🚀 FIXED: Uses correct camelCase database columns.
     const [result] = await db.query(
-      `UPDATE batches SET name=?, start_month=?, start_year=?, end_month=?, end_year=?, status=?, sections=?, specs=? WHERE id=?`,
+      `UPDATE batches SET name=?, startMonth=?, startYear=?, endMonth=?, endYear=?, sections=?, specs=? WHERE id=?`,
       [
-        data.name || '', data.startMonth || '', data.startYear || '', 
-        data.endMonth || '', data.endYear || '', data.status || 'Active', 
-        sections, specs, id
+        data.name || '', 
+        data.startMonth || '', 
+        data.startYear || '', 
+        data.endMonth || '', 
+        data.endYear || '', 
+        sections, 
+        specs, 
+        id
       ]
     );
     return result.affectedRows;

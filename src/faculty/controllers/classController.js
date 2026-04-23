@@ -3,7 +3,12 @@ const Class = require('../model/classModel');
 // 1. Get all classes for the logged-in faculty
 exports.getMyClasses = async (req, res) => {
   try {
-    const data = await Class.findByFacultyId(req.user.id);
+    const facultyId = req.user?.id;
+    if (!facultyId) {
+      return res.status(401).json({ success: false, message: "Unauthorized. Faculty ID missing." });
+    }
+
+    const data = await Class.findByFacultyId(facultyId);
     res.json({ success: true, data });
   } catch (err) {
     console.error("Fetch Classes Error:", err.message);
@@ -14,7 +19,8 @@ exports.getMyClasses = async (req, res) => {
 // 2. Get students for a specific class
 exports.getClassStudents = async (req, res) => {
   try {
-    const data = await Class.getEnrolledStudents(req.params.classId);
+    const { classId } = req.params;
+    const data = await Class.getEnrolledStudents(classId);
     res.json({ success: true, data });
   } catch (err) {
     console.error("Fetch Students Error:", err.message);
@@ -22,11 +28,15 @@ exports.getClassStudents = async (req, res) => {
   }
 };
 
-// 3. Save Attendance (Fixed for BIGINT compatibility)
+// 3. Save Attendance
 exports.saveAttendance = async (req, res) => {
   try {
     const { classId } = req.params;
     const { date, attendanceData } = req.body;
+
+    if (!attendanceData || Object.keys(attendanceData).length === 0) {
+      return res.status(400).json({ success: false, message: "No attendance data provided" });
+    }
 
     // Convert keys/values to ensure compatibility with BIGINT UNSIGNED and INT
     const values = Object.entries(attendanceData).map(([studentId, status]) => [
@@ -36,22 +46,16 @@ exports.saveAttendance = async (req, res) => {
       status
     ]);
 
-    if (values.length === 0) {
-      return res.status(400).json({ success: false, message: "No attendance data provided" });
-    }
-
     await Class.saveBulkAttendance(values);
     
     res.json({ success: true, message: "Attendance saved successfully" });
 
   } catch (err) {
-    // This will print the EXACT reason (e.g. Foreign Key fail) in your VS Code terminal
-    console.error(" DATABASE ERROR:", err.sqlMessage || err.message);
-
+    console.error("DATABASE ERROR:", err.sqlMessage || err.message);
     res.status(500).json({ 
       success: false, 
       message: "Error saving attendance",
-      sqlError: err.sqlMessage || err.message // Sends the real error to Postman
+      sqlError: err.sqlMessage || err.message 
     });
   }
 };
@@ -59,7 +63,8 @@ exports.saveAttendance = async (req, res) => {
 // 4. Get Assignments for a class
 exports.getAssignments = async (req, res) => {
   try {
-    const data = await Class.getAssignments(req.params.classId);
+    const { classId } = req.params;
+    const data = await Class.getAssignments(classId);
     res.json({ success: true, data });
   } catch (err) {
     console.error("Fetch Assignments Error:", err.message);
