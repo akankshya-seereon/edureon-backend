@@ -6,7 +6,6 @@ const path = require('path');
 const fs = require('fs');
 
 // ─── 1. SECURE UPLOAD DIRECTORY SETUP ───
-// Using path.resolve to ensure the path is always correct from the project root
 const uploadDir = path.resolve(__dirname, '../../../uploads/employee_docs');
 
 if (!fs.existsSync(uploadDir)) {
@@ -20,22 +19,20 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        // Generates a clean, unique filename: e.g., profilePhoto-1678901234-87654321.jpg
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname).toLowerCase()}`);
     }
 });
 
-// ─── 3. FILE TYPE FILTER (Security) ───
+// ─── 3. FILE TYPE FILTER ───
 const fileFilter = (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|webp|pdf/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
-
     if (mimetype && extname) {
         return cb(null, true);
     } else {
-        cb(new Error('INVALID_FILE_TYPE')); // Custom error trigger
+        cb(new Error('INVALID_FILE_TYPE'));
     }
 };
 
@@ -43,23 +40,19 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ 
     storage: storage,
     fileFilter: fileFilter,
-    limits: { 
-        fileSize: 5 * 1024 * 1024 // 5MB limit per file
-    } 
-});
+    limits: { fileSize: 5 * 1024 * 1024 }
+}); 
 
-// Map exact field names from the Frontend FormData
 const uploadFields = upload.fields([
-    { name: 'profilePhoto', maxCount: 1 },
-    { name: 'panCard', maxCount: 1 },
-    { name: 'aadhaarCard', maxCount: 1 },
-    { name: 'degreeCertificate', maxCount: 1 },
-    { name: 'experienceLetter', maxCount: 1 },
-    { name: 'otherDocs', maxCount: 10 } 
+    { name: 'profilePhoto',        maxCount: 1  },
+    { name: 'panCard',             maxCount: 1  },
+    { name: 'aadhaarCard',         maxCount: 1  },
+    { name: 'degreeCertificate',   maxCount: 1  },
+    { name: 'experienceLetter',    maxCount: 1  },
+    { name: 'otherDocs',           maxCount: 10 }
 ]);
 
 // ─── 5. ERROR HANDLING WRAPPER ───
-// This catches Multer errors before they crash the controller
 const handleUpload = (req, res, next) => {
     uploadFields(req, res, (err) => {
         if (err instanceof multer.MulterError) {
@@ -79,21 +72,29 @@ const handleUpload = (req, res, next) => {
 
 // ══════════════════════════════════════════════════════════════════════
 // ─── API ROUTES ───
+// ⚠️  CRITICAL ORDER: All fixed-path routes MUST come BEFORE /:id
+//     Otherwise Express matches "designations", "list", "register"
+//     as an :id parameter — causing 404s or wrong controller calls.
 // ══════════════════════════════════════════════════════════════════════
 
-// POST: Register New Employee (Handles Files + Data)
+// ✅ POST: Register New Employee
 router.post('/register', handleUpload, employeeController.registerEmployee);
 
-// GET: List All Employees (MUST be placed above '/:id' to prevent route conflicts)
+// ✅ GET: All unique designations used across employees (for autocomplete)
+// MUST be before /:id — otherwise "designations" is treated as an ID
+router.get('/designations', employeeController.getDesignations);
+
+// ✅ GET: List All Employees
+// MUST be before /:id — otherwise "list" is treated as an ID
 router.get('/list', employeeController.getAllEmployees);
 
-// GET: Fetch Single Employee Profile by ID
+// ✅ GET: Single Employee by ID  ← /:id routes go LAST
 router.get('/:id', employeeController.getEmployeeById);
 
-// PUT: Update Existing Employee (Handles Files + Data)
+// ✅ PUT: Update Employee
 router.put('/:id', handleUpload, employeeController.updateEmployee);
 
-// DELETE: Remove an Employee
+// ✅ DELETE: Remove Employee
 router.delete('/:id', employeeController.deleteEmployee);
 
 module.exports = router;

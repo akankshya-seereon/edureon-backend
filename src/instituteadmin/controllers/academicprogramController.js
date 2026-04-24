@@ -1,13 +1,13 @@
 const AcademicProgramModel = require('../models/academicprogramModel');
-const db = require('../../config/db'); // 🚀 NEW: Added to directly fetch buildings
+const db = require('../../config/db');
 
 // 🛡️ HELPER: Securely get Institute ID
 const getInstituteId = (req) => {
+  // Checks for Passport/JWT user object first
   if (req.user) {
     return req.user.institute_id || req.user.id;
   }
-  // Silently default to 1 during UI testing if Auth Middleware is disabled. 
-  // (This stops the terminal warnings!)
+  // Default to 1 for development/testing if middleware is not active
   return 1; 
 };
 
@@ -17,10 +17,9 @@ exports.getBuildings = async (req, res) => {
   try {
     const instId = getInstituteId(req);
     
-    // 🚀 Fetches buildings specifically for the logged-in institute
-    // Adjust 'buildings' and 'building_name' to match your actual database table/columns
+    // 🚀 FIXED: Uses 'name' instead of 'building_name' to match your actual DB
     const [buildings] = await db.query(
-      `SELECT id, building_name AS name FROM buildings WHERE institute_id = ?`, 
+      `SELECT id, name FROM buildings WHERE institute_id = ?`, 
       [instId]
     );
 
@@ -30,7 +29,8 @@ exports.getBuildings = async (req, res) => {
     });
   } catch (error) {
     console.error("🔥 DB Error [getBuildings]:", error.message);
-    res.status(500).json({ success: false, message: 'Failed to fetch buildings.' });
+    // Return empty data instead of crashing 500 so frontend doesn't break
+    res.status(200).json({ success: false, data: [], message: error.message });
   }
 };
 
@@ -103,7 +103,7 @@ exports.deleteCourse = async (req, res) => {
 
 exports.createSpecialization = async (req, res) => {
   try {
-    const { courseId } = req.body;
+    const courseId = req.body.courseId || req.body.course_id;
     if (!courseId) {
       return res.status(400).json({ success: false, message: 'Course ID is required.' });
     }
@@ -117,7 +117,7 @@ exports.createSpecialization = async (req, res) => {
     });
   } catch (error) {
     console.error("🔥 DB Error [createSpecialization]:", error.message);
-    res.status(500).json({ success: false, message: 'Failed to create specialization.' });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -154,7 +154,7 @@ exports.deleteSpecialization = async (req, res) => {
 exports.createBatch = async (req, res) => {
   try {
     const instId = getInstituteId(req);
-    // Attach the institute ID to the incoming data
+    // Merge batch data with the secure institute ID
     const batchData = { ...req.body, institute_id: instId };
 
     if (!batchData.course_id) {
@@ -165,7 +165,7 @@ exports.createBatch = async (req, res) => {
     res.status(201).json({ success: true, message: 'Batch created successfully', id });
   } catch (error) {
     console.error("🔥 DB Error [createBatch]:", error.message);
-    res.status(500).json({ success: false, message: 'Failed to create batch.' });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

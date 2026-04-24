@@ -6,9 +6,7 @@ const academicProgramController = require('../controllers/academicprogramControl
 // Note: When you are ready to secure these routes, check inside your 'authMiddleware.js' 
 // file to see exactly what function name is being exported, then you can import it.
 
-// --- 🏢 INFRASTRUCTURE ROUTES (🚀 NEW) ---
-// Note: Depending on where you mount this router in your main app.js/index.js, 
-// this will become either /admin/programs/buildings OR /admin/buildings
+// --- 🏢 INFRASTRUCTURE ROUTES ---
 router.get('/buildings', academicProgramController.getBuildings);
 
 // --- 🎓 GET FULL NESTED TREE (Courses + Specs + Batches) ---
