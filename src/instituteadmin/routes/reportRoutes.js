@@ -4,7 +4,7 @@ const reportController = require('../controllers/reportController');
 
 // 🚀 THE FIX: Changed 'verifyAdmin' to 'verifyToken' 
 // (If your file exports something else like 'verifyInstituteAdmin', use that instead!)
-const { verifyToken } = require('../Middlewares/authMiddleware');
+const { verifyToken } = require('../middlewares/authMiddleware');
 
 /**
  * 🔐 BASE URL: /api/admin/reports (Set in index.js)
