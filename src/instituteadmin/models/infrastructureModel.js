@@ -1,5 +1,5 @@
-const db = require('../../config/db'); 
-
+const db = require('../../config/db');
+ 
 const InfrastructureModel = {
   // --- FETCHING ALL NESTED DATA FOR THE UI ---
   getCampusesWithBuildings: async (instituteId) => {
@@ -8,13 +8,13 @@ const InfrastructureModel = {
       'SELECT * FROM campuses WHERE institute_id = ? ORDER BY name ASC',
       [instituteId]
     );
-
+ 
     // 2. Get Buildings
     const [buildings] = await db.query(
       'SELECT * FROM buildings WHERE institute_id = ? ORDER BY name ASC',
       [instituteId]
     );
-
+ 
     // Map buildings into their respective campuses to match React state structure
     return campuses.map(campus => ({
       id: campus.id,
@@ -34,10 +34,10 @@ const InfrastructureModel = {
         }))
     }));
   },
-
+ 
   getAllRooms: async (instituteId) => {
     const [rows] = await db.query(`
-      SELECT 
+      SELECT
         r.id, r.room_no AS roomNo, r.type, r.capacity AS cap, r.floor, r.block, r.is_active AS active,
         b.name AS building,
         COALESCE(SUM(e.quantity), 0) AS eq
@@ -50,7 +50,7 @@ const InfrastructureModel = {
     `, [instituteId]);
     return rows;
   },
-
+ 
   // --- CREATION QUERIES ---
   createCampus: async (instituteId, data) => {
     const [result] = await db.query(
@@ -59,7 +59,7 @@ const InfrastructureModel = {
     );
     return result.insertId;
   },
-
+ 
   createBuilding: async (instituteId, data) => {
     const [result] = await db.query(
       'INSERT INTO buildings (institute_id, campus_id, name, floors, block, rooms_count) VALUES (?, ?, ?, ?, ?, ?)',
@@ -67,19 +67,19 @@ const InfrastructureModel = {
     );
     return result.insertId;
   },
-
+ 
   createRoom: async (instituteId, data) => {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
-
+ 
       // Insert Room
       const [roomResult] = await connection.query(
         'INSERT INTO rooms (institute_id, building_id, room_no, type, capacity, floor, block) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [instituteId, data.building_id, data.roomNo, data.type, data.capacity, data.floor, data.block]
       );
       const roomId = roomResult.insertId;
-
+ 
       // Insert Equipment if provided
       if (data.equipment && data.equipment.length > 0) {
         const eqValues = data.equipment.map(eq => [
@@ -90,7 +90,7 @@ const InfrastructureModel = {
           [eqValues]
         );
       }
-
+ 
       await connection.commit();
       return roomId;
     } catch (err) {
@@ -100,20 +100,20 @@ const InfrastructureModel = {
       if (connection) connection.release();
     }
   },
-
+ 
   // --- TOGGLE ACTIVE STATUS ---
   toggleStatus: async (tableName, id, instituteId, status) => {
     // Whitelist tables to prevent SQL injection
     const allowedTables = ['campuses', 'buildings', 'rooms'];
     if (!allowedTables.includes(tableName)) throw new Error('Invalid table');
-
+ 
     const [result] = await db.query(
       `UPDATE ${tableName} SET is_active = ? WHERE id = ? AND institute_id = ?`,
       [status, id, instituteId]
     );
     return result.affectedRows;
   },
-
+ 
   // 🚀 --- DELETE QUERIES ---
   deleteCampus: async (instituteId, id) => {
     const [result] = await db.query(
@@ -122,7 +122,7 @@ const InfrastructureModel = {
     );
     return result.affectedRows;
   },
-
+ 
   deleteBuilding: async (instituteId, id) => {
     const [result] = await db.query(
       'DELETE FROM buildings WHERE id = ? AND institute_id = ?',
@@ -130,7 +130,7 @@ const InfrastructureModel = {
     );
     return result.affectedRows;
   },
-
+ 
   deleteRoom: async (instituteId, id) => {
     const [result] = await db.query(
       'DELETE FROM rooms WHERE id = ? AND institute_id = ?',
@@ -138,7 +138,7 @@ const InfrastructureModel = {
     );
     return result.affectedRows;
   },
-
+ 
   // 📝 --- UPDATE QUERIES ---
   updateCampus: async (instituteId, id, data) => {
     const [result] = await db.query(
@@ -147,7 +147,7 @@ const InfrastructureModel = {
     );
     return result.affectedRows;
   },
-
+ 
   updateBuilding: async (instituteId, id, data) => {
     const [result] = await db.query(
       'UPDATE buildings SET name = ?, floors = ?, block = ?, rooms_count = ? WHERE id = ? AND institute_id = ?',
@@ -155,7 +155,7 @@ const InfrastructureModel = {
     );
     return result.affectedRows;
   },
-
+ 
   updateRoom: async (instituteId, id, data) => {
     const [result] = await db.query(
       'UPDATE rooms SET room_no = ?, type = ?, capacity = ?, floor = ?, block = ?, building_id = ? WHERE id = ? AND institute_id = ?',
@@ -164,5 +164,5 @@ const InfrastructureModel = {
     return result.affectedRows;
   }
 };
-
+ 
 module.exports = InfrastructureModel;

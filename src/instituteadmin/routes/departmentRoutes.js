@@ -1,35 +1,29 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 const departmentController = require('../controllers/departmentController');
-
-/**
- * 🔒 AUTHENTICATION & CONTEXT MIDDLEWARES
- * Ensure the user is logged in and the institute context is captured.
- */
 const { verifyToken } = require('../middlewares/authMiddleware');
-// If you have a separate middleware to inject instituteId from the headers/JWT, 
-// make sure it is included here.
+ 
+console.log('✅ Loading Department Routes...');
+ 
+// All department routes require a valid token
 router.use(verifyToken);
-
-/**
- * 🏢 DEPARTMENT ROUTES
- * Base URL: /admin/departments (defined in your main server.js/app.js)
- */
-
-// ─── READ ───
-// Fetches all departments for the current institute (including HOD names)
-router.get('/', departmentController.getDepartments);
-
-// ─── CREATE ───
-// Adds a new department and assigns an HOD (if provided)
-router.post('/', departmentController.createDepartment);
-
-// ─── UPDATE ───
-// 🚀 Matches the frontend Inline Edit: PUT /admin/departments/:id
-router.put('/:id', departmentController.updateDepartment);
-
-// ─── DELETE ───
-// Removes a department (Controller now handles if it's linked to other data)
+ 
+// ── BUILDINGS (fixes the 404 on the frontend) ──────────────────────────────
+router.get('/buildings', departmentController.getBuildings);
+ 
+// ── DEPARTMENTS CRUD ───────────────────────────────────────────────────────
+router.get( '/',    departmentController.getDepartments);
+router.post('/',    departmentController.createDepartment);
+ 
+// ⚠️  IMPORTANT: /assign-room MUST be defined BEFORE /:id
+// Otherwise Express matches "assign-room" as the :id param and hits updateDepartment
+router.post('/assign-room', (req, res, next) => {
+    console.log('🚀 HIT /assign-room ROUTE!');
+    console.log('   Body received:', JSON.stringify(req.body, null, 2));
+    next();
+}, departmentController.assignRoom);
+ 
+router.put(   '/:id', departmentController.updateDepartment);
 router.delete('/:id', departmentController.deleteDepartment);
-
+ 
 module.exports = router;
