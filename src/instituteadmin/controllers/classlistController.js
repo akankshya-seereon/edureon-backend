@@ -29,7 +29,6 @@ exports.createClass = async (req, res) => {
             });
         }
 
-        // 🚀 FIXED: Added batch_id to be saved in the database
         const dbPayload = {
             institute_id: instituteId,
             class_name: data.className,
@@ -40,7 +39,7 @@ exports.createClass = async (req, res) => {
             subject: data.subject || null,
             faculty_assigned: data.facultyAssigned || null,
             faculty_id: data.facultyId || null, 
-            batch_id: data.batchId || null, // 👈 Captures the selected batch
+            batch_id: data.batchId || null,
             academic_year: data.academicYear || null,
             semester: data.semester || null,
             schedule: data.schedule ? JSON.stringify(data.schedule) : null,
@@ -65,7 +64,6 @@ exports.updateClass = async (req, res) => {
         const { id } = req.params;
         const data = req.body;
 
-        // 🚀 FIXED: Added batch_id for updates too
         const dbPayload = {
             class_name: data.className,
             program: data.program || null,
@@ -75,7 +73,7 @@ exports.updateClass = async (req, res) => {
             subject: data.subject || null,
             faculty_assigned: data.facultyAssigned || null,
             faculty_id: data.facultyId || null,
-            batch_id: data.batchId || null, // 👈 Updates the selected batch
+            batch_id: data.batchId || null,
             academic_year: data.academicYear || null,
             semester: data.semester || null,
             schedule: data.schedule ? JSON.stringify(data.schedule) : null,
@@ -95,38 +93,45 @@ exports.updateClass = async (req, res) => {
     }
 };
 
-// 🚀 FULLY UPDATED FORM DATA WITH SAFE DATABASE QUERIES
+// 🚀 SECURED & DUAL-IDENTIFIER FORM DATA RETRIEVAL
 exports.getFormData = async (req, res) => {
     try {
-        const instituteId = req.user?.institute_id || req.user?.id || 1;
+        // 🚀 CRITICAL FIX: Extract BOTH identifiers to bypass DB mismatch
+        // instString = 'SAM751030', instInt = 1
+        const instString = req.user?.institute_id || req.user?.institute_code || 'SAM751030';
+        const instInt = req.user?.id || 1; 
 
-        // 1. Fetch Departments
+        // 1. Fetch Departments (Handles both 'SAM751030' or '1')
         const [departments] = await db.query(
-            "SELECT id, department_name AS name FROM departments"
+            "SELECT id, department_name AS name FROM departments WHERE institute_code = ? OR institute_code = ?",
+            [instString, instInt]
         ).catch((err) => { console.error("Dept Error:", err.message); return [[]]; });
 
-        // 2. Fetch Programs (Course)
+        // 2. Fetch Programs/Courses (Handles both identifiers)
         const [programs] = await db.query(
-            "SELECT id, name FROM academic_courses WHERE institute_id = ?", 
-            [instituteId]
+            "SELECT id, name FROM academic_courses WHERE institute_id = ? OR institute_id = ?", 
+            [instString, instInt]
         ).catch((err) => { console.error("Prog Error:", err.message); return [[]]; });
 
         // 3. Fetch Subjects
         const [subjects] = await db.query(`
             SELECT DISTINCT subject_name as name, subject_code as code, course_name 
             FROM syllabus_subjects 
-            WHERE institute_id = ?
-        `, [instituteId]).catch((err) => { console.error("Subj Error:", err.message); return [[]]; });
+            WHERE institute_id = ? OR institute_id = ?
+        `, [instString, instInt]).catch((err) => { console.error("Subj Error:", err.message); return [[]]; });
 
         // 4. Fetch Faculty
         const [faculty] = await db.query(`
             SELECT id, CONCAT(firstName, ' ', lastName) AS name 
             FROM employees 
-            WHERE staffType = 'Academic' AND status = 'Active'
-        `).catch((err) => { console.error("Fac Error:", err.message); return [[]]; });
+            WHERE staffType = 'Academic' AND status = 'Active' AND (institute_id = ? OR institute_id = ?)
+        `, [instString, instInt]).catch((err) => { console.error("Fac Error:", err.message); return [[]]; });
 
         // 5. Fetch Rooms
-        const [rooms] = await db.query("SELECT * FROM rooms").then(([rows]) => {
+        const [rooms] = await db.query(
+            "SELECT * FROM rooms WHERE institute_id = ? OR institute_id = ?", 
+            [instString, instInt]
+        ).then(([rows]) => {
             const mappedRooms = rows.map(r => ({
                 id: r.id,
                 name: r.roomName || r.room_number || r.room_no || r.name || `Room ${r.id}`
@@ -139,20 +144,22 @@ exports.getFormData = async (req, res) => {
 
         // 6. Fetch Academic Years
         const [academicYears] = await db.query(
-            "SELECT id, year AS name FROM academic_years WHERE institute_id = ?", [instituteId]
+            "SELECT id, year AS name FROM academic_years WHERE institute_id = ? OR institute_id = ?", 
+            [instString, instInt]
         ).catch(() => [[{name: '2024-25'}, {name: '2025-26'}, {name: '2026-27'}]]);
 
         // 7. Fetch Semesters
         const [semesters] = await db.query(
             "SELECT id, name FROM semesters"
-        ).catch(() => [[{name: 'Semester 1'}, {name: 'Semester 2'}, {name: 'Semester 3'}, {name: 'Semester 4'}, {name: 'Semester 5'}, {name: 'Semester 6'}, {name: 'Semester 7'}, {name: 'Semester 8'}]]);
+        ).catch(() => [[{name: 'Semester 1'}, {name: 'Semester 2'}, {name: 'Semester 3'}, {name: 'Semester 4'}]]);
 
         // 8. Fetch Sections
         const [sections] = await db.query(
-            "SELECT id, name FROM sections WHERE institute_id = ?", [instituteId]
-        ).catch(() => [[{name: 'A'}, {name: 'B'}, {name: 'C'}, {name: 'D'}, {name: 'E'}]]);
+            "SELECT id, name FROM sections WHERE institute_id = ? OR institute_id = ?", 
+            [instString, instInt]
+        ).catch(() => [[{name: 'A'}, {name: 'B'}, {name: 'C'}]]);
 
-        // 9. 🚀 NEW: Fetch Batches and count their students dynamically!
+        // 9. Fetch Batches
         const [batches] = await db.query(`
             SELECT 
                 b.id, 
@@ -160,32 +167,31 @@ exports.getFormData = async (req, res) => {
                 COUNT(bs.student_id) AS student_count 
             FROM batches b
             LEFT JOIN batch_students bs ON b.id = bs.batch_id
-            WHERE b.institute_id = ?
+            WHERE b.institute_id = ? OR b.institute_id = ?
             GROUP BY b.id
-        `, [instituteId]).catch((err) => { 
+        `, [instString, instInt]).catch((err) => { 
             console.error("Batch Fetch Error:", err.message); 
-            return [[]]; // Fallback if tables don't exist yet
+            return [[]]; 
         });
 
-        // Days of the week are universally static, no DB query needed
         const days = [
             {name: 'Monday'}, {name: 'Tuesday'}, {name: 'Wednesday'}, 
             {name: 'Thursday'}, {name: 'Friday'}, {name: 'Saturday'}
         ];
 
-        // Send EVERYTHING back to React
+        // 🚀 Send EVERYTHING back to React
         res.status(200).json({
             success: true,
             data: {
                 departments: departments || [],
-                programs: programs || [], 
+                courses: programs || [], // Mapped correctly for ClassList.jsx
                 subjects: subjects || [],  
                 faculty: faculty || [],
                 rooms: rooms || [],
                 academicYears: academicYears || [],
                 semesters: semesters || [],
                 sections: sections || [],
-                batches: batches || [], // 👈 Sending the batches data to React!
+                batches: batches || [],
                 days: days
             }
         });

@@ -7,6 +7,7 @@ const DepartmentModel = {
   const [rows] = await db.query(`
     SELECT
       d.id,
+      d.institute_code,
       d.department_name       AS name,
       d.department_code,
       d.head                  AS hodId,
@@ -15,7 +16,14 @@ const DepartmentModel = {
       d.type,
       d.description,
       d.room_number           AS roomNumber,
-      CONCAT(COALESCE(e.firstName,''), ' ', COALESCE(e.lastName,'')) AS hod_name
+      CONCAT(COALESCE(e.firstName,''), ' ', COALESCE(e.lastName,'')) AS hod_name,
+      
+      -- 🚀 FETCH ROOM COUNT FOR UI
+      (SELECT COUNT(*) FROM rooms r WHERE r.department_id = d.id AND r.institute_id = d.institute_code) AS calculated_room_count,
+      
+      -- 🚀 FETCH ROOM TAGS FOR UI (e.g. "101, 102, Lab 4")
+      (SELECT GROUP_CONCAT(r.room_no SEPARATOR ', ') FROM rooms r WHERE r.department_id = d.id AND r.institute_id = d.institute_code) AS assigned_rooms
+
     FROM departments d
     LEFT JOIN employees e ON d.head = e.id
     WHERE d.institute_code = ?
