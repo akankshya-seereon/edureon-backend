@@ -3,14 +3,22 @@ const db = require('../../config/db');
 const FeeModel = {
   // --- FEE STRUCTURES ---
   async getAllStructures(instituteId) {
+    // 🚀 CRITICAL FIX: Added a LEFT JOIN to fetch the actual student's name
     const [rows] = await db.query(
-      `SELECT * FROM fee_structures WHERE institute_id = ? ORDER BY created_at DESC`,
+      `SELECT 
+          fs.*, 
+          TRIM(CONCAT(IFNULL(s.first_name, ''), ' ', IFNULL(s.last_name, ''))) AS student_name 
+       FROM fee_structures fs
+       LEFT JOIN students s ON fs.student_id = s.id
+       WHERE fs.institute_id = ? 
+       ORDER BY fs.created_at DESC`,
       [instituteId]
     );
     return rows;
   },
 
   async createStructure(data) {
+    // Using SET ? automatically maps the student_id from your controller!
     const [result] = await db.query(`INSERT INTO fee_structures SET ?`, [data]);
     return result.insertId;
   },
@@ -72,6 +80,23 @@ const FeeModel = {
   async createNotification(data) {
     const [result] = await db.query(`INSERT INTO fee_notifications SET ?`, [data]);
     return result.insertId;
+  },
+
+  // --- STUDENT FETCHER ---
+  async getStudentsForFees(instituteId) {
+    const [rows] = await db.query(
+      `SELECT 
+        id, 
+        first_name, 
+        last_name, 
+        TRIM(CONCAT(IFNULL(first_name, ''), ' ', IFNULL(last_name, ''))) AS name,
+        roll_no, 
+        standard_name AS course_name 
+       FROM students 
+       WHERE institute_id = ?`,
+      [instituteId]
+    );
+    return rows;
   }
 };
 

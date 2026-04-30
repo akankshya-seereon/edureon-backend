@@ -1,133 +1,84 @@
 const db = require('../../config/db');
- 
+
 const DepartmentModel = {
-    // ─── GET ALL DEPARTMENTS (Updated with Room Calculations) ───
-    getAll: async (instituteId) => {
-        // 🚀 Added LEFT JOIN for rooms, COUNT() for the total, and GROUP_CONCAT() for the list
+    // ── GET ALL ──────────────────────────────────────────────────
+    getAll: async (instituteCode) => {
         const query = `
-            SELECT
+            SELECT 
                 d.id,
-                d.department_name AS name,
+                d.institute_code,
+                d.department_name,
+                d.department_name AS name, -- Alias for frontend compatibility
                 d.department_code,
-                d.head AS hodId,
-                d.lead_role AS leadRole,
+                d.head AS hodId,           -- Map 'head' to 'hodId'
                 d.category,
                 d.type,
-                d.description,
-                d.room_number AS roomNumber,
+                d.room_number,
                 CONCAT(e.firstName, ' ', e.lastName) AS hod_name,
-                COUNT(r.id) as calculated_room_count,
-                GROUP_CONCAT(r.room_no SEPARATOR ', ') as assigned_rooms
+                (SELECT COUNT(*) FROM rooms r WHERE r.department = d.department_name AND r.institute_id = d.institute_code) AS calculated_room_count
             FROM departments d
             LEFT JOIN employees e ON d.head = e.id
-            LEFT JOIN rooms r ON d.department_name = r.department AND (r.institute_id = d.institute_code OR r.institute_id = ?)
             WHERE d.institute_code = ?
-            GROUP BY
-                d.id,
-                d.department_name,
-                d.department_code,
-                d.head,
-                d.lead_role,
-                d.category,
-                d.type,
-                d.description,
-                d.room_number,
-                e.firstName,
-                e.lastName
-            ORDER BY d.id DESC
+            ORDER BY d.department_name ASC
         `;
-        try {
-            // Passing instituteId twice to satisfy the ON clause and WHERE clause safely
-            const [rows] = await db.query(query, [instituteId, instituteId]);
-            return rows;
-        } catch (error) {
-            console.error("❌ Model Error (getAll):", error.message);
-            throw error;
-        }
+        const [rows] = await db.query(query, [instituteCode]);
+        return rows;
     },
- 
-    create: async (instituteId, data) => {
+
+    // ── CREATE ──────────────────────────────────────────────────
+    create: async (instituteCode, data) => {
         const query = `
-            INSERT INTO departments
-            (institute_code, department_name, department_code, head, lead_role, category, type, description, room_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO departments 
+                (institute_code, department_name, department_code, head, category, type, room_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
-       
-        // 🚀 Helper: Converts frontend empty strings '' to MySQL NULLs to prevent crashes
-        const sanitize = (val) => (val === '' || val === undefined ? null : val);
- 
-        const values = [
-            instituteId,
-            sanitize(data.name),
-            sanitize(data.department_code),
-            sanitize(data.hodId),      
-            sanitize(data.leadRole),  
-            sanitize(data.category),            
+        const params = [
+            instituteCode,
+            data.name,
+            data.department_code,
+            data.hodId, // Maps to 'head'
+            data.category,
             data.type || 'Academic',
-            sanitize(data.description),
-            sanitize(data.roomNumber)  
+            data.room_number
         ];
-       
-        try {
-            const [result] = await db.query(query, values);
-            return result.insertId;
-        } catch (error) {
-            console.error("❌ Model Error (create):", error.sqlMessage || error.message);
-            throw error;
-        }
+        const [result] = await db.query(query, params);
+        return result.insertId;
     },
- 
-    update: async (id, instituteId, data) => {
-        // 🚀 We use COALESCE so if the frontend doesn't send a field (like 'type'), it keeps the existing value!
+
+    // ── UPDATE ──────────────────────────────────────────────────
+    update: async (id, instituteCode, data) => {
         const query = `
-            UPDATE departments
-            SET department_name = ?,
-                department_code = ?,
-                head = ?,
-                lead_role = COALESCE(?, lead_role),
-                category = ?,
-                description = COALESCE(?, description),
-                room_number = ?,
-                type = COALESCE(?, type)
+            UPDATE departments SET 
+                department_name = ?, 
+                department_code = ?, 
+                head = ?, 
+                category = ?, 
+                type = ?, 
+                room_number = ?
             WHERE id = ? AND institute_code = ?
         `;
- 
-        const sanitize = (val) => (val === '' || val === undefined ? null : val);
- 
-        const values = [
-            sanitize(data.name),
-            sanitize(data.department_code),
-            sanitize(data.hodId),
-            sanitize(data.leadRole),
-            sanitize(data.category),
-            sanitize(data.description),
-            sanitize(data.roomNumber),
-            sanitize(data.type),
+        const params = [
+            data.name,
+            data.department_code,
+            data.hodId,
+            data.category,
+            data.type,
+            data.room_number,
             id,
-            instituteId
+            instituteCode
         ];
-       
-        try {
-            const [result] = await db.query(query, values);
-            return result.affectedRows;
-        } catch (error) {
-            console.error("❌ Model Error (update):", error.sqlMessage || error.message);
-            throw error;
-        }
+        const [result] = await db.query(query, params);
+        return result.affectedRows;
     },
- 
-    delete: async (id, instituteId) => {
-        try {
-            const [result] = await db.query(
-                'DELETE FROM departments WHERE id = ? AND institute_code = ?',
-                [id, instituteId]
-            );
-            return result.affectedRows;
-        } catch (error) {
-            console.error("❌ Model Error (delete):", error.message);
-            throw error;
-        }
+
+    // ── DELETE ──────────────────────────────────────────────────
+    delete: async (id, instituteCode) => {
+        const [result] = await db.query(
+            'DELETE FROM departments WHERE id = ? AND institute_code = ?',
+            [id, instituteCode]
+        );
+        return result.affectedRows;
     }
 };
- 
+
 module.exports = DepartmentModel;
