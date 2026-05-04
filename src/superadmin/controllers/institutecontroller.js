@@ -5,6 +5,19 @@ const multer         = require('multer');
 const path           = require('path');
 const fs             = require('fs');
 
+// ─── HELPER: Smart ID Resolver ────────────────────────────────────────────────
+// Fixes the MySQL "Truncated incorrect DOUBLE" error globally.
+// This allows frontend to pass EITHER a numeric ID (4) OR a code (LIT751030)
+const resolveInstitute = async (identifier) => {
+  const isNumeric = !isNaN(identifier) && !isNaN(parseFloat(identifier));
+  const query = isNumeric 
+    ? 'SELECT * FROM institutes WHERE id = ?' 
+    : 'SELECT * FROM institutes WHERE institute_code = ?';
+    
+  const [rows] = await db.query(query, [identifier]);
+  return rows[0]; // Returns the full row or undefined
+};
+
 // ─── Multer Setup ─────────────────────────────────────────────────────────────
 
 const storage = multer.diskStorage({
@@ -48,8 +61,10 @@ exports.getAllInstitutes = async (req, res) => {
 
 exports.getInstituteById = async (req, res) => {
   try {
-    const institute = await InstituteModel.findById(req.params.id);
+    // 🚀 Uses smart resolver
+    const institute = await resolveInstitute(req.params.id);
     if (!institute) return res.status(404).json({ success: false, message: 'Institute not found' });
+    
     res.status(200).json({ success: true, data: institute });
   } catch (err) {
     console.error('[InstituteController] getInstituteById:', err.message);
@@ -58,11 +73,11 @@ exports.getInstituteById = async (req, res) => {
 };
 
 // ─── ADD INSTITUTE ────────────────────────────────────────────────────────────
-// Accepts multipart/form-data with JSON fields + file uploads
+
+// ─── ADD INSTITUTE ────────────────────────────────────────────────────────────
 
 exports.addInstitute = async (req, res) => {
   try {
-    // Parse JSON strings sent via FormData
     let organisation = req.body.organisation;
     let directors    = req.body.directors;
     let legal        = req.body.legal;
@@ -77,32 +92,30 @@ exports.addInstitute = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Organisation name and email are required' });
     }
 
+    // 🚀 1. Check if frontend sent the password
+    if (!organisation.password) {
+      return res.status(400).json({ success: false, message: 'Admin password is required' });
+    }
+
     if (await InstituteModel.emailExists(organisation.email)) {
       return res.status(409).json({ success: false, message: 'Institute with this email already exists' });
     }
 
-    // ── Map uploaded files into legal and directors objects ──────────────────
-    // Each file field name tells us where to store the path.
-    // Convention:
-    //   legal_panNoDoc          → legal.panNoDoc
-    //   director_0_panDoc       → directors[0].documents.panDoc
-    //   director_0_aadhaarDoc   → directors[0].documents.aadhaarDoc
-
+    // ── Map uploaded files (Synchronized Logic) ──
     if (req.files && req.files.length > 0) {
       req.files.forEach(file => {
         const savedPath = `/uploads/institutes/${file.filename}`;
         const fieldname = file.fieldname;
 
         if (fieldname.startsWith('legal_')) {
-          // e.g. "legal_panNoDoc" → legal.panNoDoc
-          const key = fieldname.replace('legal_', '');
+          const key = fieldname.slice(6); // removes "legal_" prefix
           legal[key] = savedPath;
-
         } else if (fieldname.startsWith('director_')) {
-          // e.g. "director_0_panDoc" → directors[0].documents.panDoc
-          const parts = fieldname.split('_'); // ['director', '0', 'panDoc']
-          const idx   = parseInt(parts[1], 10);
-          const key   = parts[2]; // 'panDoc' or 'aadhaarDoc'
+          const firstUnderscore  = fieldname.indexOf('_');
+          const secondUnderscore = fieldname.indexOf('_', firstUnderscore + 1);
+          const idx = parseInt(fieldname.slice(firstUnderscore + 1, secondUnderscore), 10);
+          const key = fieldname.slice(secondUnderscore + 1);
+          
           if (directors[idx] && directors[idx].documents) {
             directors[idx].documents[key] = savedPath;
           }
@@ -111,8 +124,14 @@ exports.addInstitute = async (req, res) => {
     }
 
     const instituteCode = organisation.name.substring(0, 3).toUpperCase() + (organisation.pin || '000');
-    const salt          = await bcrypt.genSalt(10);
-    const passwordHash  = await bcrypt.hash('password123', salt);
+    
+    // 🚀 2. Hash the manual password from the frontend
+    const salt         = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(organisation.password, salt);
+
+    // 🔒 3. SECURITY: Delete the plaintext password from the JSON object
+    // so it doesn't get saved in the database's `organisation` text column!
+    delete organisation.password;
 
     const id = await InstituteModel.create({
       organisation,
@@ -121,10 +140,10 @@ exports.addInstitute = async (req, res) => {
       branches:       branches  || [],
       institute_code: instituteCode,
       admin_email:    organisation.email,
-      password_hash:  passwordHash,
+      password_hash:  passwordHash, // Uses the newly hashed manual password
     });
 
-    const doc = await InstituteModel.findById(id);
+    const doc = await resolveInstitute(id);
     res.status(201).json({ success: true, message: 'Institute added successfully', data: doc });
 
   } catch (err) {
@@ -137,9 +156,11 @@ exports.addInstitute = async (req, res) => {
 
 exports.updateInstitute = async (req, res) => {
   try {
-    const { id } = req.params;
-    const existing = await InstituteModel.findById(id);
+    // 🚀 Uses smart resolver to find the true numeric ID safely
+    const existing = await resolveInstitute(req.params.id);
     if (!existing) return res.status(404).json({ success: false, message: 'Institute not found' });
+    
+    const numericId = existing.id; // Extract safe integer ID
 
     let { organisation, directors, legal, branches } = req.body;
     if (typeof organisation === 'string') organisation = JSON.parse(organisation);
@@ -147,34 +168,30 @@ exports.updateInstitute = async (req, res) => {
     if (typeof legal        === 'string') legal        = JSON.parse(legal);
     if (typeof branches     === 'string') branches     = JSON.parse(branches);
 
-    // Map uploaded files if any
-    // Replace this block in addInstitute AND updateInstitute:
-if (req.files && req.files.length > 0) {
-  req.files.forEach(file => {
-    const savedPath = `/uploads/institutes/${file.filename}`;
-    const fieldname = file.fieldname;
+    // ── Map uploaded files (Synchronized Logic) ──
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        const savedPath = `/uploads/institutes/${file.filename}`;
+        const fieldname = file.fieldname;
 
-    if (fieldname.startsWith('legal_')) {
-      // e.g. "legal_panDoc" → key = "panDoc"
-      const key = fieldname.slice(6); // removes "legal_" prefix exactly
-      legal[key] = savedPath;
-
-    } else if (fieldname.startsWith('director_')) {
-      // e.g. "director_0_panDoc" or "director_0_aadhaarDoc"
-      // Split only on first two underscores, rest is the key
-      const firstUnderscore  = fieldname.indexOf('_');
-      const secondUnderscore = fieldname.indexOf('_', firstUnderscore + 1);
-      const idx = parseInt(fieldname.slice(firstUnderscore + 1, secondUnderscore), 10);
-      const key = fieldname.slice(secondUnderscore + 1); // everything after "director_N_"
-      if (directors[idx] && directors[idx].documents) {
-        directors[idx].documents[key] = savedPath;
-      }
+        if (fieldname.startsWith('legal_')) {
+          const key = fieldname.slice(6);
+          legal[key] = savedPath;
+        } else if (fieldname.startsWith('director_')) {
+          const firstUnderscore  = fieldname.indexOf('_');
+          const secondUnderscore = fieldname.indexOf('_', firstUnderscore + 1);
+          const idx = parseInt(fieldname.slice(firstUnderscore + 1, secondUnderscore), 10);
+          const key = fieldname.slice(secondUnderscore + 1);
+          
+          if (directors[idx] && directors[idx].documents) {
+            directors[idx].documents[key] = savedPath;
+          }
+        }
+      });
     }
-  });
-}
 
-    await InstituteModel.update(id, { organisation, directors, legal, branches });
-    const updated = await InstituteModel.findById(id);
+    await InstituteModel.update(numericId, { organisation, directors, legal, branches });
+    const updated = await resolveInstitute(numericId);
     res.status(200).json({ success: true, message: 'Institute updated successfully', data: updated });
 
   } catch (err) {
@@ -187,11 +204,14 @@ if (req.files && req.files.length > 0) {
 
 exports.toggleStatus = async (req, res) => {
   try {
-    const { id } = req.params;
     const { is_active } = req.body;
     if (is_active === undefined) return res.status(400).json({ success: false, message: 'is_active is required' });
-    if (!await InstituteModel.findById(id)) return res.status(404).json({ success: false, message: 'Institute not found' });
-    await InstituteModel.toggleStatus(id, is_active);
+    
+    // 🚀 Uses smart resolver
+    const existing = await resolveInstitute(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: 'Institute not found' });
+    
+    await InstituteModel.toggleStatus(existing.id, is_active);
     res.status(200).json({ success: true, message: `Institute ${is_active ? 'activated' : 'deactivated'}` });
   } catch (err) {
     console.error('[InstituteController] toggleStatus:', err.message);
@@ -203,10 +223,15 @@ exports.toggleStatus = async (req, res) => {
 
 exports.deleteInstitute = async (req, res) => {
   try {
-    if (!await InstituteModel.findById(req.params.id)) {
+    // 🚀 Uses smart resolver so MySQL never crashes on string codes
+    const existing = await resolveInstitute(req.params.id);
+    
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Institute not found' });
     }
-    await InstituteModel.delete(req.params.id);
+    
+    // Always delete using the safe numeric ID
+    await InstituteModel.delete(existing.id);
     res.status(200).json({ success: true, message: 'Institute deleted successfully' });
   } catch (err) {
     console.error('[InstituteController] deleteInstitute:', err.message);
@@ -217,13 +242,12 @@ exports.deleteInstitute = async (req, res) => {
 // ─── FULL DETAILS (InstituteAdmin view) ──────────────────────────────────────
 
 exports.getFullInstituteDetails = async (req, res) => {
-  const identifier = req.params.id;
-
   try {
-    const base = await InstituteModel.findById(identifier);
+    // 🚀 Uses smart resolver
+    const base = await resolveInstitute(req.params.id);
     if (!base) return res.status(404).json({ success: false, message: 'Institute not found' });
 
-    const instId = base.id;
+    const instId = base.id; // Safely extracted ID for subqueries
 
     const [[studentRow]] = await db.query(
       `SELECT COUNT(*) AS total FROM students WHERE institute_id = ?`, [instId]
@@ -237,6 +261,7 @@ exports.getFullInstituteDetails = async (req, res) => {
       `SELECT COUNT(*) AS total FROM classes WHERE institute_id = ?`, [instId]
     ).catch(() => [[{ total: 0 }]]);
 
+    // Format the JSON data back out safely
     res.json({
       success: true,
       data: {
@@ -247,11 +272,10 @@ exports.getFullInstituteDetails = async (req, res) => {
         plan:           base.plan     || 'Premium',
         created_at:     base.created_at,
 
-        // All JSON blobs — already parsed objects/arrays from the model
-        organisation: base.organisation || {},
-        directors:    Array.isArray(base.directors) ? base.directors : [],
-        legal:        base.legal        || {},
-        branches:     Array.isArray(base.branches)  ? base.branches  : [],
+        organisation: typeof base.organisation === 'string' ? JSON.parse(base.organisation) : base.organisation || {},
+        directors:    typeof base.directors === 'string' ? JSON.parse(base.directors) : base.directors || [],
+        legal:        typeof base.legal === 'string' ? JSON.parse(base.legal) : base.legal || {},
+        branches:     typeof base.branches === 'string' ? JSON.parse(base.branches) : base.branches || [],
 
         totalStudents: studentRow?.total || 0,
         totalFaculty:  facultyRow?.total || 0,

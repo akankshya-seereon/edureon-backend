@@ -81,9 +81,11 @@ const adminAuthController = {
       }
 
       // 7. Create Token
+      // 🚀 CRITICAL UPDATE: Added institute_id here so middleware can filter data
       const token = jwt.sign(
         { 
           id: institute.id, 
+          institute_id: institute.id, // THE SILO ID
           role: normalizedRole, 
           code: institute.institute_code || finalInstituteCode
         },
@@ -100,15 +102,17 @@ const adminAuthController = {
           maxAge: 24 * 60 * 60 * 1000 // 1 day
       });
 
-      console.log("✅ SUCCESS: Admin logged in.");
+      console.log(`✅ SUCCESS: Admin logged in for Institute ID: ${institute.id}`);
 
       // 9. Send Success Response
+      // 🚀 CRITICAL UPDATE: Added institute_id to the frontend response
       res.status(200).json({
         success: true,
         message: `Login successful for ${orgData?.name || 'Institute'}`,
         token, // Also keep it in the body just in case frontend needs it
         user: { 
           id: institute.id,
+          institute_id: institute.id, // SO FRONTEND KNOWS THE ID
           name: orgData?.name || 'Institute Admin',
           email: email,
           code: institute.institute_code || finalInstituteCode,

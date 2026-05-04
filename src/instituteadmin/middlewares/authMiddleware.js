@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 const verifyToken = (req, res, next) => {
   // 1. Get the token from the 'Authorization' header or cookies
   const authHeader = req.headers['authorization'];
-  // Added optional cookie check as a fallback safety measure
   const token = (authHeader && authHeader.split(' ')[1]) || req.cookies?.token;
 
   // 2. If there is no token, deny access
@@ -35,15 +34,21 @@ const verifyToken = (req, res, next) => {
       // Look for the special ghost header sent by the frontend
       const managedInstituteId = req.headers['x-managed-institute-id'];
       
-     if (managedInstituteId) {
-  // ✅ Parse to integer so SQL comparisons work correctly
-  req.user.institute_id = parseInt(managedInstituteId);
-  req.instituteId = parseInt(managedInstituteId);
-}
+      if (managedInstituteId) {
+        // ✅ Parse to integer so SQL comparisons work correctly
+        req.user.institute_id = parseInt(managedInstituteId, 10);
+        req.instituteId = parseInt(managedInstituteId, 10);
+      }
       
     } else {
       // Normal Institute Admin/Faculty logic: just pass along their real ID
-      req.instituteId = req.user.institute_id || req.user.instituteCode; 
+      // 🚀 TWEAK: Ensure their real ID is also strictly an integer
+      const realId = req.user.institute_id || req.user.instituteCode;
+      
+      if (realId) {
+         req.user.institute_id = parseInt(realId, 10);
+         req.instituteId = parseInt(realId, 10);
+      }
     }
     // ==========================================
 
