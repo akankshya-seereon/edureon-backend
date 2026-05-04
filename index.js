@@ -34,7 +34,8 @@ if (process.env.NODE_ENV !== 'production') {
 // --- SuperAdmin ---
 const superAdminRoutes = require('./src/superadmin/routes/superAdminRoutes');
 const superAdminAuthRoutes = require('./src/superadmin/routes/authRoutes');
-const superAdminInstituteRoutes = require('./src/superadmin/routes/instituteRoutes');
+// const superAdminInstituteRoutes = require('./src/superadmin/routes/instituteRoutes');
+const instituteRoutes = require('./src/superadmin/routes/instituteRoutes'); // 🚀 Added Institute Management for SuperAdmin
 
 // --- Institute Admin & Staff ---
 const adminAuthRoutes = require('./src/instituteadmin/routes/authRoutes');
@@ -58,6 +59,7 @@ const departmentRoutes = require('./src/instituteadmin/routes/departmentRoutes')
 const employeeRoutes = require('./src/instituteadmin/routes/employeeRoutes'); // 🚀 Added Employee
 const syllabusRoutes = require('./src/instituteadmin/routes/SyllabusRoutes'); // 🚀 Added Syllabus
 const classlistRoutes = require('./src/instituteadmin/routes/classlistRoutes'); // 🚀 Added ClassList
+// const instituteRoutes = require('./src/superadmin/routes/instituteRoutes'); // 🚀 Added Institute Management for SuperAdmin
 // --- Faculty Portal ---
 const facultyAuthRoutes = require('./src/faculty/routes/authRoutes');
 const profileRoutes = require('./src/faculty/routes/profileRoutes');
@@ -86,11 +88,12 @@ const studentCertificateRoutes = require('./src/student/routes/certificateRoutes
 // --- SuperAdmin Mounting ---
 app.use('/api/superadmin/auth', superAdminAuthRoutes);
 app.use('/api/superadmin', superAdminRoutes);
-app.use('/api/superadmin/institutes', superAdminInstituteRoutes);
-
+// app.use('/api/superadmin/institutes', superAdminInstituteRoutes);
+app.use('/api/superadmin/institutes', instituteRoutes); // 🚀 Mounted Institute Management for SuperAdmin
 // --- Admin / Staff Mounting ---
 app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin/dashboard', dashboardRoutes); 
+app.use('/api/admin/institutes', instituteRoutes);
 app.use('/api/admin/principal', principalRoutes);
 app.use('/api/admin/infrastructure', infrastructureRoutes); // 🚀 Infrastructure Mount
 app.use('/api/admin/attendance', adminAttendanceRoutes);
@@ -131,6 +134,7 @@ app.use('/api/student/fees', studentFeeRoutes);
 app.use('/api/student/certificates', studentCertificateRoutes);
 app.use('/api/attendance', studentAttendanceRoutes); // Note: Shared path logic
 
+app.use('/uploads', express.static('uploads'));
 
 // ==========================================
 // 4. UTILITY ROUTES

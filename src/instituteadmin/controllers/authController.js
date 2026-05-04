@@ -2,7 +2,7 @@ const AuthModel = require('../models/authModel');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-const adminAuthController = {
+const adminAuthController = { 
   // ─── 1. INSTITUTE / ADMIN LOGIN ───
   instituteLogin: async (req, res) => {
     console.log("\n-----------------------------------------");

@@ -1,6 +1,38 @@
-const InstituteModel = require('../model/instituteModel'); 
-const bcrypt = require('bcrypt');
-const db = require('../../config/db'); // 🚀 ADDED: Needed for the deep-dive multi-table queries
+const InstituteModel = require('../model/instituteModel');
+const bcrypt         = require('bcrypt');
+const db             = require('../../config/db');
+const multer         = require('multer');
+const path           = require('path');
+const fs             = require('fs');
+
+// ─── Multer Setup ─────────────────────────────────────────────────────────────
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../../../uploads/institutes');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+
+exports.upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  fileFilter: (req, file, cb) => {
+    const allowed = /pdf|jpg|jpeg|png/i;
+    if (allowed.test(path.extname(file.originalname))) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, JPG, JPEG, PNG files are allowed'));
+    }
+  },
+});
+
+// ─── GET ALL ──────────────────────────────────────────────────────────────────
 
 exports.getAllInstitutes = async (req, res) => {
   try {
@@ -11,6 +43,8 @@ exports.getAllInstitutes = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+// ─── GET BY ID ────────────────────────────────────────────────────────────────
 
 exports.getInstituteById = async (req, res) => {
   try {
@@ -23,9 +57,21 @@ exports.getInstituteById = async (req, res) => {
   }
 };
 
+// ─── ADD INSTITUTE ────────────────────────────────────────────────────────────
+// Accepts multipart/form-data with JSON fields + file uploads
+
 exports.addInstitute = async (req, res) => {
   try {
-    const { organisation, directors, legal, branches } = req.body;
+    // Parse JSON strings sent via FormData
+    let organisation = req.body.organisation;
+    let directors    = req.body.directors;
+    let legal        = req.body.legal;
+    let branches     = req.body.branches;
+
+    if (typeof organisation === 'string') organisation = JSON.parse(organisation);
+    if (typeof directors    === 'string') directors    = JSON.parse(directors);
+    if (typeof legal        === 'string') legal        = JSON.parse(legal);
+    if (typeof branches     === 'string') branches     = JSON.parse(branches);
 
     if (!organisation || !organisation.name || !organisation.email) {
       return res.status(400).json({ success: false, message: 'Organisation name and email are required' });
@@ -35,61 +81,109 @@ exports.addInstitute = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Institute with this email already exists' });
     }
 
-    const instituteCode = (organisation.name.substring(0, 3).toUpperCase()) + (organisation.pin || '000');
+    // ── Map uploaded files into legal and directors objects ──────────────────
+    // Each file field name tells us where to store the path.
+    // Convention:
+    //   legal_panNoDoc          → legal.panNoDoc
+    //   director_0_panDoc       → directors[0].documents.panDoc
+    //   director_0_aadhaarDoc   → directors[0].documents.aadhaarDoc
 
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash("password123", salt);
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        const savedPath = `/uploads/institutes/${file.filename}`;
+        const fieldname = file.fieldname;
 
-    const id = await InstituteModel.create({ 
-      organisation, 
-      directors, 
-      legal, 
-      branches, 
+        if (fieldname.startsWith('legal_')) {
+          // e.g. "legal_panNoDoc" → legal.panNoDoc
+          const key = fieldname.replace('legal_', '');
+          legal[key] = savedPath;
+
+        } else if (fieldname.startsWith('director_')) {
+          // e.g. "director_0_panDoc" → directors[0].documents.panDoc
+          const parts = fieldname.split('_'); // ['director', '0', 'panDoc']
+          const idx   = parseInt(parts[1], 10);
+          const key   = parts[2]; // 'panDoc' or 'aadhaarDoc'
+          if (directors[idx] && directors[idx].documents) {
+            directors[idx].documents[key] = savedPath;
+          }
+        }
+      });
+    }
+
+    const instituteCode = organisation.name.substring(0, 3).toUpperCase() + (organisation.pin || '000');
+    const salt          = await bcrypt.genSalt(10);
+    const passwordHash  = await bcrypt.hash('password123', salt);
+
+    const id = await InstituteModel.create({
+      organisation,
+      directors:      directors || [],
+      legal:          legal     || {},
+      branches:       branches  || [],
       institute_code: instituteCode,
-      admin_email: organisation.email,
-      password_hash: passwordHash
+      admin_email:    organisation.email,
+      password_hash:  passwordHash,
     });
 
     const doc = await InstituteModel.findById(id);
+    res.status(201).json({ success: true, message: 'Institute added successfully', data: doc });
 
-    res.status(201).json({ 
-      success: true, 
-      message: 'Institute added successfully', 
-      data: doc 
-    });
   } catch (err) {
     console.error('[InstituteController] addInstitute:', err.message);
     res.status(500).json({ success: false, message: 'Server error: ' + err.message });
   }
 };
 
+// ─── UPDATE INSTITUTE ─────────────────────────────────────────────────────────
+
 exports.updateInstitute = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!await InstituteModel.findById(id)) {
-      return res.status(404).json({ success: false, message: 'Institute not found' });
+    const existing = await InstituteModel.findById(id);
+    if (!existing) return res.status(404).json({ success: false, message: 'Institute not found' });
+
+    let { organisation, directors, legal, branches } = req.body;
+    if (typeof organisation === 'string') organisation = JSON.parse(organisation);
+    if (typeof directors    === 'string') directors    = JSON.parse(directors);
+    if (typeof legal        === 'string') legal        = JSON.parse(legal);
+    if (typeof branches     === 'string') branches     = JSON.parse(branches);
+
+    // Map uploaded files if any
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        const savedPath = `/uploads/institutes/${file.filename}`;
+        const fieldname = file.fieldname;
+        if (fieldname.startsWith('legal_')) {
+          const key = fieldname.replace('legal_', '');
+          if (legal) legal[key] = savedPath;
+        } else if (fieldname.startsWith('director_')) {
+          const parts = fieldname.split('_');
+          const idx   = parseInt(parts[1], 10);
+          const key   = parts[2];
+          if (directors && directors[idx]?.documents) {
+            directors[idx].documents[key] = savedPath;
+          }
+        }
+      });
     }
-    
-    const { organisation, directors, legal, branches } = req.body;
-    res.status(200).json({ success: true, message: 'Institute updated successfully (Placeholder)' });
+
+    await InstituteModel.update(id, { organisation, directors, legal, branches });
+    const updated = await InstituteModel.findById(id);
+    res.status(200).json({ success: true, message: 'Institute updated successfully', data: updated });
+
   } catch (err) {
     console.error('[InstituteController] updateInstitute:', err.message);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
+// ─── TOGGLE STATUS ────────────────────────────────────────────────────────────
+
 exports.toggleStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { is_active } = req.body; 
-    
-    if (is_active === undefined) {
-      return res.status(400).json({ success: false, message: 'is_active is required' });
-    }
-    if (!await InstituteModel.findById(id)) {
-      return res.status(404).json({ success: false, message: 'Institute not found' });
-    }
-    
+    const { is_active } = req.body;
+    if (is_active === undefined) return res.status(400).json({ success: false, message: 'is_active is required' });
+    if (!await InstituteModel.findById(id)) return res.status(404).json({ success: false, message: 'Institute not found' });
     await InstituteModel.toggleStatus(id, is_active);
     res.status(200).json({ success: true, message: `Institute ${is_active ? 'activated' : 'deactivated'}` });
   } catch (err) {
@@ -97,6 +191,8 @@ exports.toggleStatus = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+// ─── DELETE ───────────────────────────────────────────────────────────────────
 
 exports.deleteInstitute = async (req, res) => {
   try {
@@ -111,122 +207,53 @@ exports.deleteInstitute = async (req, res) => {
   }
 };
 
-// ============================================================================
-// 🚀 NEW: Get Full Institute Details (For Super Admin Dashboard Mini-View)
-// ============================================================================
-// ============================================================================
-// 🚀 UPDATED: Get Full Institute Details (For Super Admin Dashboard Mini-View)
-// ============================================================================
+// ─── FULL DETAILS (InstituteAdmin view) ──────────────────────────────────────
+
 exports.getFullInstituteDetails = async (req, res) => {
-  const instId = req.params.id;
+  const identifier = req.params.id;
 
   try {
-    // 1. Fetch the base institute record using your existing model logic 
-    const baseInstitute = await InstituteModel.findById(instId);
-    
-    if (!baseInstitute) {
-      return res.status(404).json({ success: false, message: "Institute not found" });
-    }
+    const base = await InstituteModel.findById(identifier);
+    if (!base) return res.status(404).json({ success: false, message: 'Institute not found' });
 
-    // 2. Fetch all related data simultaneously for maximum speed
-    const [
-      [students],
-      [faculty],
-      [batches],
-      [exams],
-      [collections],
-      [placements],
-      [expensesAgg]
-    ] = await Promise.all([
-      // Students table
-      db.query(`
-        SELECT 
-          id, 
-          CONCAT(first_name, ' ', IFNULL(last_name, '')) AS name, 
-          roll_no AS roll, 
-          standard_name AS batch, 
-          status 
-        FROM students 
-        WHERE institute_id = ? 
-        LIMIT 15
-      `, [instId]),
-      
-      // FIXED: Reverted back to 'dept' instead of 'department'
-      db.query(`
-        SELECT 
-          id, 
-          name, 
-          designation, 
-          dept AS subject, 
-          status 
-        FROM faculty 
-        WHERE institute_id = ? 
-        LIMIT 15
-      `, [instId]),
-      
-      // Classes/Batches table 
-      db.query(`
-        SELECT 
-          id, 
-          course_name AS name, 
-          course_name AS course, 
-          status, 
-          (SELECT COUNT(*) FROM students WHERE class_id = classes.id) AS studentCount 
-        FROM classes 
-        WHERE institute_id = ? 
-        LIMIT 15
-      `, [instId]).catch(() => [[ ]]),
-      
-      // Exams 
-      db.query(`SELECT id, title, exam_date AS date, class_id AS batch, subject_id AS subject, status FROM exams WHERE institute_id = ? ORDER BY exam_date DESC LIMIT 10`, [instId]).catch(() => [[ ]]),
-      
-      // Collections
-      db.query(`SELECT id, receipt_no, student_name, amount, payment_date AS date, status FROM fee_collections WHERE institute_id = ? ORDER BY payment_date DESC LIMIT 10`, [instId]).catch(() => [[ ]]),
-      
-      // Placements
-      db.query(`SELECT id, student_name, company, role, package_lpa AS package FROM placements WHERE institute_id = ? ORDER BY id DESC LIMIT 10`, [instId]).catch(() => [[ ]]),
+    const instId = base.id;
 
-      // Financials (Expenses)
-      db.query(`SELECT SUM(amount) AS totalExpenses FROM expenses WHERE institute_id = ?`, [instId]).catch(() => [[{ totalExpenses: 0 }]])
-    ]);
+    const [[studentRow]] = await db.query(
+      `SELECT COUNT(*) AS total FROM students WHERE institute_id = ?`, [instId]
+    ).catch(() => [[{ total: 0 }]]);
 
-    // Calculate total revenue from the collections array
-    const revenueCollected = collections.reduce((sum, record) => sum + (Number(record.amount) || 0), 0);
+    const [[facultyRow]] = await db.query(
+      `SELECT COUNT(*) AS total FROM faculty WHERE institute_id = ?`, [instId]
+    ).catch(() => [[{ total: 0 }]]);
 
-    // 3. Mold the data into the exact format the React UI expects
-    const fullDetails = {
-      ...baseInstitute, 
-      name: baseInstitute.organisation?.name || baseInstitute.name, 
-      city: baseInstitute.organisation?.city || "",
-      
-      // Lists for the tables
-      studentsList: students,
-      facultyList: faculty,
-      batchesList: batches,
-      examsList: exams,
-      collectionsList: collections,
-      placementsList: placements,
-      
-      // Stats for the top row pills
-      totalStudents: students.length, 
-      totalFaculty: faculty.length,
-      totalBatches: batches.length,
-      totalPlacements: placements.length,
-      
-      // Financials
-      totalExpenses: expensesAgg[0]?.totalExpenses || 0,
-      revenueCollected: revenueCollected,
-      totalCollections: revenueCollected, 
-    };
+    const [[batchRow]] = await db.query(
+      `SELECT COUNT(*) AS total FROM classes WHERE institute_id = ?`, [instId]
+    ).catch(() => [[{ total: 0 }]]);
 
-    // 4. Send it to the React Dashboard
     res.json({
       success: true,
-      data: fullDetails
+      data: {
+        id:             base.id,
+        institute_code: base.institute_code,
+        admin_email:    base.admin_email,
+        status:         base.status   || 'Active',
+        plan:           base.plan     || 'Premium',
+        created_at:     base.created_at,
+
+        // All JSON blobs — already parsed objects/arrays from the model
+        organisation: base.organisation || {},
+        directors:    Array.isArray(base.directors) ? base.directors : [],
+        legal:        base.legal        || {},
+        branches:     Array.isArray(base.branches)  ? base.branches  : [],
+
+        totalStudents: studentRow?.total || 0,
+        totalFaculty:  facultyRow?.total || 0,
+        totalBatches:  batchRow?.total   || 0,
+      },
     });
 
-  } catch (error) {
-    console.error("[InstituteController] getFullInstituteDetails:", error);
-    res.status(500).json({ success: false, message: "Failed to load complete institute details." });
+  } catch (err) {
+    console.error('[InstituteController] getFullInstituteDetails:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to load institute details.' });
   }
 };

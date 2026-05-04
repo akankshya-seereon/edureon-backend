@@ -1,5 +1,6 @@
 const express = require('express');
 const router  = express.Router();
+const jwt     = require('jsonwebtoken');
 
 const {
   getAllInstitutes,
@@ -8,22 +9,43 @@ const {
   updateInstitute,
   toggleStatus,
   deleteInstitute,
-  getFullInstituteDetails // 🚀 1. Import the new function here
+  getFullInstituteDetails,
+  upload,
 } = require('../controllers/institutecontroller');
 
-const protect = require('../middlewares/authMiddlewares');
+const superAdminProtect = require('../middlewares/authMiddlewares');
 
-router.use(protect);
+// ── Accepts tokens from SuperAdmin AND InstituteAdmin ─────────────────────────
+const allowBoth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, message: 'No token provided.' });
+  }
+  try {
+    const token   = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key');
+    req.user = decoded;
+    const allowed = ['super_admin', 'institute_admin', 'admin', 'principal', 'accountant', 'hod'];
+    if (!allowed.includes(decoded.role)) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+    next();
+  } catch (err) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+  }
+};
 
-router.get('/',             getAllInstitutes);
+// ── Routes ────────────────────────────────────────────────────────────────────
 
-// 🚀 2. Add the new deep-fetch route right here
-router.get('/:id/full-details', getFullInstituteDetails); 
+// MUST be before /:id — accessible by both SuperAdmin and InstituteAdmin
+router.get('/:id/full-details', allowBoth, getFullInstituteDetails);
 
-router.get('/:id',          getInstituteById);
-router.post('/',            addInstitute);
-router.put('/:id',          updateInstitute);
-router.patch('/:id/status', toggleStatus);
-router.delete('/:id',       deleteInstitute);
+// SuperAdmin-only routes
+router.get('/',             superAdminProtect, getAllInstitutes);
+router.get('/:id',          superAdminProtect, getInstituteById);
+router.post('/',            superAdminProtect, upload.any(), addInstitute);
+router.put('/:id',          superAdminProtect, upload.any(), updateInstitute);
+router.patch('/:id/status', superAdminProtect, toggleStatus);
+router.delete('/:id',       superAdminProtect, deleteInstitute);
 
 module.exports = router;
