@@ -22,33 +22,27 @@ exports.createClass = async (req, res) => {
         const data = req.body;
         const instituteId = req.user?.institute_id || req.user?.id;
         
-        // 🚀 SMART FALLBACKS: Accept multiple naming conventions from React or Postman
-        const resolvedDepartment = data.department || data.departmentId || data.department_id;
-        const resolvedProgram = data.program || data.course || data.course_id;
-        const resolvedFacultyId = data.facultyId || data.faculty_id || data.facultyAssigned;
-
-        // 🚀 STRICT VALIDATION: Check for all required DB fields
-        if (!data.className || !resolvedDepartment || !data.subject || !data.academicYear) {
+        if (!data.className || !data.department) {
             return res.status(400).json({ 
                 success: false, 
-                message: "Missing Required Fields: className, department, subject, and academicYear are mandatory." 
+                message: "Class Name and Department are required." 
             });
         }
 
         const dbPayload = {
             institute_id: instituteId,
             class_name: data.className,
-            program: resolvedProgram || null,
-            department: resolvedDepartment,
+            program: data.program || null,
+            department: data.department || null,
             section: data.section || null,
-            max_students: data.maxStudents || data.max_students || 0,
-            subject: data.subject,
+            max_students: data.maxStudents || 0,
+            subject: data.subject || null,
             faculty_assigned: data.facultyAssigned || null,
-            faculty_id: resolvedFacultyId || null, 
-            batch_id: data.batchId || data.batch_id || null,
-            academic_year: data.academicYear || data.academic_year,
+            faculty_id: data.facultyId || null, 
+            batch_id: data.batchId || null,
+            academic_year: data.academicYear || null,
             semester: data.semester || null,
-            schedule: data.schedule ? JSON.stringify(data.schedule) : '[]',
+            schedule: data.schedule ? JSON.stringify(data.schedule) : null,
             description: data.description || null
         };
 
@@ -70,24 +64,19 @@ exports.updateClass = async (req, res) => {
         const { id } = req.params;
         const data = req.body;
 
-        // 🚀 SMART FALLBACKS applied to updates as well
-        const resolvedDepartment = data.department || data.departmentId || data.department_id;
-        const resolvedProgram = data.program || data.course || data.course_id;
-        const resolvedFacultyId = data.facultyId || data.faculty_id || data.facultyAssigned;
-
         const dbPayload = {
-            class_name: data.className || data.class_name,
-            program: resolvedProgram || null,
-            department: resolvedDepartment || null,
+            class_name: data.className,
+            program: data.program || null,
+            department: data.department || null,
             section: data.section || null,
-            max_students: data.maxStudents || data.max_students || 0,
+            max_students: data.maxStudents || 0,
             subject: data.subject || null,
             faculty_assigned: data.facultyAssigned || null,
-            faculty_id: resolvedFacultyId || null,
-            batch_id: data.batchId || data.batch_id || null,
-            academic_year: data.academicYear || data.academic_year || null,
+            faculty_id: data.facultyId || null,
+            batch_id: data.batchId || null,
+            academic_year: data.academicYear || null,
             semester: data.semester || null,
-            schedule: data.schedule ? JSON.stringify(data.schedule) : '[]',
+            schedule: data.schedule ? JSON.stringify(data.schedule) : null,
             description: data.description || null
         };
 
@@ -107,31 +96,38 @@ exports.updateClass = async (req, res) => {
 // 🚀 SECURED & DUAL-IDENTIFIER FORM DATA RETRIEVAL
 exports.getFormData = async (req, res) => {
     try {
+        // 🚀 CRITICAL FIX: Extract BOTH identifiers to bypass DB mismatch
+        // instString = 'SAM751030', instInt = 1
         const instString = req.user?.institute_id || req.user?.institute_code || 'SAM751030';
         const instInt = req.user?.id || 1; 
 
+        // 1. Fetch Departments (Handles both 'SAM751030' or '1')
         const [departments] = await db.query(
             "SELECT id, department_name AS name FROM departments WHERE institute_code = ? OR institute_code = ?",
             [instString, instInt]
         ).catch((err) => { console.error("Dept Error:", err.message); return [[]]; });
 
+        // 2. Fetch Programs/Courses (Handles both identifiers)
         const [programs] = await db.query(
             "SELECT id, name FROM academic_courses WHERE institute_id = ? OR institute_id = ?", 
             [instString, instInt]
         ).catch((err) => { console.error("Prog Error:", err.message); return [[]]; });
 
+        // 3. Fetch Subjects
         const [subjects] = await db.query(`
             SELECT DISTINCT subject_name as name, subject_code as code, course_name 
             FROM syllabus_subjects 
             WHERE institute_id = ? OR institute_id = ?
         `, [instString, instInt]).catch((err) => { console.error("Subj Error:", err.message); return [[]]; });
 
+        // 4. Fetch Faculty
         const [faculty] = await db.query(`
             SELECT id, CONCAT(firstName, ' ', lastName) AS name 
             FROM employees 
             WHERE staffType = 'Academic' AND status = 'Active' AND (institute_id = ? OR institute_id = ?)
         `, [instString, instInt]).catch((err) => { console.error("Fac Error:", err.message); return [[]]; });
 
+        // 5. Fetch Rooms
         const [rooms] = await db.query(
             "SELECT * FROM rooms WHERE institute_id = ? OR institute_id = ?", 
             [instString, instInt]
@@ -146,25 +142,28 @@ exports.getFormData = async (req, res) => {
             return [[]]; 
         }); 
 
+        // 6. Fetch Academic Years
         const [academicYears] = await db.query(
             "SELECT id, year AS name FROM academic_years WHERE institute_id = ? OR institute_id = ?", 
             [instString, instInt]
         ).catch(() => [[{name: '2024-25'}, {name: '2025-26'}, {name: '2026-27'}]]);
 
+        // 7. Fetch Semesters
         const [semesters] = await db.query(
             "SELECT id, name FROM semesters"
         ).catch(() => [[{name: 'Semester 1'}, {name: 'Semester 2'}, {name: 'Semester 3'}, {name: 'Semester 4'}]]);
 
+        // 8. Fetch Sections
         const [sections] = await db.query(
             "SELECT id, name FROM sections WHERE institute_id = ? OR institute_id = ?", 
             [instString, instInt]
         ).catch(() => [[{name: 'A'}, {name: 'B'}, {name: 'C'}]]);
 
-        // 🚀 FIXED BATCH QUERY (Changed batch_name to name to prevent crashing)
+        // 9. Fetch Batches
         const [batches] = await db.query(`
             SELECT 
                 b.id, 
-                b.name AS name, 
+                b.batch_name AS name, 
                 COUNT(bs.student_id) AS student_count 
             FROM batches b
             LEFT JOIN batch_students bs ON b.id = bs.batch_id
@@ -180,11 +179,12 @@ exports.getFormData = async (req, res) => {
             {name: 'Thursday'}, {name: 'Friday'}, {name: 'Saturday'}
         ];
 
+        // 🚀 Send EVERYTHING back to React
         res.status(200).json({
             success: true,
             data: {
                 departments: departments || [],
-                courses: programs || [], 
+                courses: programs || [], // Mapped correctly for ClassList.jsx
                 subjects: subjects || [],  
                 faculty: faculty || [],
                 rooms: rooms || [],

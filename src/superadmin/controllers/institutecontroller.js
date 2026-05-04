@@ -148,23 +148,30 @@ exports.updateInstitute = async (req, res) => {
     if (typeof branches     === 'string') branches     = JSON.parse(branches);
 
     // Map uploaded files if any
-    if (req.files && req.files.length > 0) {
-      req.files.forEach(file => {
-        const savedPath = `/uploads/institutes/${file.filename}`;
-        const fieldname = file.fieldname;
-        if (fieldname.startsWith('legal_')) {
-          const key = fieldname.replace('legal_', '');
-          if (legal) legal[key] = savedPath;
-        } else if (fieldname.startsWith('director_')) {
-          const parts = fieldname.split('_');
-          const idx   = parseInt(parts[1], 10);
-          const key   = parts[2];
-          if (directors && directors[idx]?.documents) {
-            directors[idx].documents[key] = savedPath;
-          }
-        }
-      });
+    // Replace this block in addInstitute AND updateInstitute:
+if (req.files && req.files.length > 0) {
+  req.files.forEach(file => {
+    const savedPath = `/uploads/institutes/${file.filename}`;
+    const fieldname = file.fieldname;
+
+    if (fieldname.startsWith('legal_')) {
+      // e.g. "legal_panDoc" → key = "panDoc"
+      const key = fieldname.slice(6); // removes "legal_" prefix exactly
+      legal[key] = savedPath;
+
+    } else if (fieldname.startsWith('director_')) {
+      // e.g. "director_0_panDoc" or "director_0_aadhaarDoc"
+      // Split only on first two underscores, rest is the key
+      const firstUnderscore  = fieldname.indexOf('_');
+      const secondUnderscore = fieldname.indexOf('_', firstUnderscore + 1);
+      const idx = parseInt(fieldname.slice(firstUnderscore + 1, secondUnderscore), 10);
+      const key = fieldname.slice(secondUnderscore + 1); // everything after "director_N_"
+      if (directors[idx] && directors[idx].documents) {
+        directors[idx].documents[key] = savedPath;
+      }
     }
+  });
+}
 
     await InstituteModel.update(id, { organisation, directors, legal, branches });
     const updated = await InstituteModel.findById(id);

@@ -1,14 +1,16 @@
 const AcademicProgramModel = require('../models/academicprogramModel');
 const db = require('../../config/db');
 
-// 🛡️ HELPER: Securely get Institute ID
+// 🛡️ HELPER: Securely get Institute ID (STRICT MODE)
 const getInstituteId = (req) => {
-  // Checks for Passport/JWT user object first
-  if (req.user) {
-    return req.user.institute_id || req.user.id;
-  }
-  // Default to 1 for development/testing if middleware is not active
-  return 1; 
+  if (!req.user) throw new Error("Unauthorized: No user token found.");
+  
+  // 🚀 TWEAK: Put institute_id FIRST so we grab the Integer for the database!
+  const id = req.user.institute_id || req.user.instituteId || req.user.institute_code || req.user.instituteCode || req.user.code;
+  
+  if (!id) throw new Error("Unauthorized: Institute ID missing from token.");
+  
+  return id; 
 };
 
 // ─── 🏢 INFRASTRUCTURE (BUILDINGS) ───────────────────────────────────────
