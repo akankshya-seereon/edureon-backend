@@ -7,23 +7,37 @@ const ClassList = {
         `, [instituteId]);
 
         // Map the database snake_case columns back to camelCase for your React frontend
-        return rows.map(row => ({
-            id: row.id,
-            className: row.class_name,
-            program: row.program,
-            department: row.department,
-            section: row.section,
-            maxStudents: row.max_students,
-            subject: row.subject,
-            facultyAssigned: row.faculty_assigned,
-            facultyId: row.faculty_id, 
-            batchId: row.batch_id, // 🚀 ADDED: Send batch ID back to React
-            academicYear: row.academic_year,
-            semester: row.semester,
-            schedule: typeof row.schedule === 'string' ? JSON.parse(row.schedule) : (row.schedule || []),
-            description: row.description,
-            students: row.enrolled_students || 0
-        }));
+        return rows.map(row => {
+            
+            // 🚀 CRITICAL FIX: Safe JSON parsing. If the database has corrupted schedule data, 
+            // this prevents the entire GET request from crashing with a 500 error.
+            let parsedSchedule = [];
+            try {
+                parsedSchedule = typeof row.schedule === 'string' ? JSON.parse(row.schedule) : (row.schedule || []);
+            } catch (error) {
+                console.error(`Failed to parse schedule JSON for class ID: ${row.id}`);
+                parsedSchedule = []; 
+            }
+
+            return {
+                id: row.id,
+                className: row.class_name,
+                program: row.program,
+                specialization: row.specialization, // 🚀 ADDED: Map specialization back to frontend
+                department: row.department,
+                section: row.section,
+                maxStudents: row.max_students,
+                subject: row.subject,
+                facultyAssigned: row.faculty_assigned,
+                facultyId: row.faculty_id, 
+                batchId: row.batch_id, 
+                academicYear: row.academic_year,
+                semester: row.semester,
+                schedule: parsedSchedule, 
+                description: row.description,
+                students: row.enrolled_students || 0
+            };
+        });
     },
 
     create: async (data) => {
@@ -35,16 +49,17 @@ const ClassList = {
         const maxStudents = data.max_students || data.maxStudents || 0;
         const facultyAssigned = data.faculty_assigned || data.facultyAssigned || null;
         const facultyId = data.faculty_id || data.facultyId || null;
-        const batchId = data.batch_id || data.batchId || null; // 🚀 ADDED: Capture Batch ID
+        const batchId = data.batch_id || data.batchId || null; 
         const academicYear = data.academic_year || data.academicYear || null;
+        const specialization = data.specialization || null; // 🚀 ADDED
 
         const [result] = await db.query(
             `INSERT INTO classes 
-            (institute_id, class_name, program, department, section, max_students, subject, faculty_assigned, faculty_id, batch_id, academic_year, semester, schedule, description) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, // 👈 Added extra ? for batch_id
+            (institute_id, class_name, program, specialization, department, section, max_students, subject, faculty_assigned, faculty_id, batch_id, academic_year, semester, schedule, description) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, // 👈 15 placeholders
             [
-                data.institute_id, className, data.program, data.department, 
-                data.section, maxStudents, data.subject, facultyAssigned, facultyId, batchId, // 👈 Added batchId
+                data.institute_id, className, data.program, specialization, data.department, 
+                data.section, maxStudents, data.subject, facultyAssigned, facultyId, batchId, 
                 academicYear, data.semester, scheduleJson, data.description
             ]
         );
@@ -58,16 +73,17 @@ const ClassList = {
         const maxStudents = data.max_students || data.maxStudents || 0;
         const facultyAssigned = data.faculty_assigned || data.facultyAssigned || null;
         const facultyId = data.faculty_id || data.facultyId || null;
-        const batchId = data.batch_id || data.batchId || null; // 🚀 ADDED: Capture Batch ID
+        const batchId = data.batch_id || data.batchId || null; 
         const academicYear = data.academic_year || data.academicYear || null;
+        const specialization = data.specialization || null; // 🚀 ADDED
 
         const [result] = await db.query(
             `UPDATE classes 
-            SET class_name=?, program=?, department=?, section=?, max_students=?, subject=?, faculty_assigned=?, faculty_id=?, batch_id=?, academic_year=?, semester=?, schedule=?, description=? 
-            WHERE id=?`, // 👈 Added batch_id=?
+            SET class_name=?, program=?, specialization=?, department=?, section=?, max_students=?, subject=?, faculty_assigned=?, faculty_id=?, batch_id=?, academic_year=?, semester=?, schedule=?, description=? 
+            WHERE id=?`, 
             [
-                className, data.program, data.department, data.section, 
-                maxStudents, data.subject, facultyAssigned, facultyId, batchId, // 👈 Added batchId
+                className, data.program, specialization, data.department, data.section, 
+                maxStudents, data.subject, facultyAssigned, facultyId, batchId, 
                 academicYear, data.semester, scheduleJson, data.description, id
             ]
         );
