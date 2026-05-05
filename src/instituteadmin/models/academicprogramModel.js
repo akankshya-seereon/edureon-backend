@@ -13,19 +13,17 @@ const AcademicProgramModel = {
       if (!courses || courses.length === 0) return [];
 
       const courseIds = courses.map(c => c.id);
-      // 🚀 Safe array for MySQL 'IN (?)' clause
-      const safeCourseIds = courseIds.length > 0 ? courseIds : [0]; 
 
       // 2. Get all specializations for these courses
       const [specializations] = await db.query(
         'SELECT * FROM specializations WHERE course_id IN (?)', 
-        [safeCourseIds]
+        [courseIds]
       );
 
       // 3. Get all batches for these courses
       const [batches] = await db.query(
         'SELECT * FROM batches WHERE course_id IN (?)', 
-        [safeCourseIds]
+        [courseIds]
       );
 
       // 4. Map them together into the nested structure React expects
@@ -41,7 +39,7 @@ const AcademicProgramModel = {
         evaluation: course.evaluation,
         totalIntake: 0,   // React calculates this dynamically from specializations
         currentIntake: 0, // React calculates this dynamically from specializations
-        status: 'Active', // Defaulting to Active as the table doesn't use an is_active column
+        status: 'Active', 
         
         specializations: specializations
           .filter(s => s.course_id === course.id)
@@ -61,24 +59,19 @@ const AcademicProgramModel = {
             let parsedSections = [];
             let parsedSpecs = [];
             
-            try {
-              parsedSections = typeof b.sections === 'string' ? JSON.parse(b.sections) : b.sections;
-            } catch(e) { parsedSections = []; }
-            
-            try {
-              parsedSpecs = typeof b.specs === 'string' ? JSON.parse(b.specs) : b.specs;
-            } catch(e) { parsedSpecs = []; }
+            try { parsedSections = typeof b.sections === 'string' ? JSON.parse(b.sections) : (b.sections || []); } catch(e) { parsedSections = []; }
+            try { parsedSpecs = typeof b.specs === 'string' ? JSON.parse(b.specs) : (b.specs || []); } catch(e) { parsedSpecs = []; }
 
             return {
               id: b.id, 
               name: b.name, 
-              // 🚀 FIXED: Safely maps your database's snake_case to the frontend's camelCase
               startMonth: b.start_month || b.startMonth || '', 
               startYear: b.start_year || b.startYear || '',   
               endMonth: b.end_month || b.endMonth || '',     
               endYear: b.end_year || b.endYear || '',       
-              sections: parsedSections || [],
-              specs: parsedSpecs || []
+              sections: parsedSections,
+              specs: parsedSpecs,
+              status: b.status || 'Active'
             };
           })
       }));
@@ -157,11 +150,12 @@ const AcademicProgramModel = {
     try {
       const total = data.total ? parseInt(data.total, 10) : 0;
       const intake = data.intake ? parseInt(data.intake, 10) : 0;
+      const instId = data.institute_id || 0; // Safely uses the column you just created
 
       const [result] = await db.query(
-        `INSERT INTO specializations (course_id, name, code, total_intake, current_intake, is_active) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [courseId, data.name || '', data.code || '', total, intake, data.active !== false ? 1 : 0]
+        `INSERT INTO specializations (institute_id, course_id, name, code, total_intake, current_intake, is_active) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [instId, courseId, data.name || '', data.code || '', total, intake, data.active !== false ? 1 : 0]
       );
       return result.insertId;
     } catch (error) {
@@ -202,12 +196,11 @@ const AcademicProgramModel = {
       const sections = JSON.stringify(data.sections || []);
       const specs = JSON.stringify(data.specs || []);
 
-      // 🚀 FIXED: Switched back to snake_case and added institute_id & status
       const [result] = await db.query(
         `INSERT INTO batches (institute_id, course_id, name, start_month, start_year, end_month, end_year, status, sections, specs) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          data.institute_id || 1, // Fallback if undefined
+          data.institute_id || 0, 
           data.course_id, 
           data.name || '', 
           data.startMonth || '', 
@@ -231,7 +224,6 @@ const AcademicProgramModel = {
       const sections = JSON.stringify(data.sections || []);
       const specs = JSON.stringify(data.specs || []);
 
-      // 🚀 FIXED: Switched back to snake_case and added status
       const [result] = await db.query(
         `UPDATE batches SET name=?, start_month=?, start_year=?, end_month=?, end_year=?, status=?, sections=?, specs=? WHERE id=?`,
         [
