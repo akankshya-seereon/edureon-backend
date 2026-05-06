@@ -10,7 +10,7 @@ const DepartmentModel = {
       d.institute_code,
       d.department_name       AS name,
       d.department_code,
-      d.head                  AS hodId,
+      d.head                  AS hodId, 
       d.lead_role             AS leadRole,
       d.category,
       d.type,
@@ -19,10 +19,10 @@ const DepartmentModel = {
       CONCAT(COALESCE(e.firstName,''), ' ', COALESCE(e.lastName,'')) AS hod_name,
       
       -- 🚀 FETCH ROOM COUNT FOR UI
-      (SELECT COUNT(*) FROM rooms r WHERE r.department_id = d.id AND r.institute_id = d.institute_code) AS calculated_room_count,
+      (SELECT COUNT(*) FROM rooms r WHERE r.department_id = d.id) AS calculated_room_count,
       
       -- 🚀 FETCH ROOM TAGS FOR UI (e.g. "101, 102, Lab 4")
-      (SELECT GROUP_CONCAT(r.room_no SEPARATOR ', ') FROM rooms r WHERE r.department_id = d.id AND r.institute_id = d.institute_code) AS assigned_rooms
+      (SELECT GROUP_CONCAT(r.room_no SEPARATOR ', ') FROM rooms r WHERE r.department_id = d.id) AS assigned_rooms
 
     FROM departments d
     LEFT JOIN employees e ON d.head = e.id
