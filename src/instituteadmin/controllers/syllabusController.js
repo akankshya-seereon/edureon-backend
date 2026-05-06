@@ -7,19 +7,28 @@ const getInstituteId = (req) => {
     return 1; // Default for UI testing
 };
 
-//  POST /api/admin/syllabus
+// 🚀 POST /api/admin/syllabus (AND ALSO USED FOR PUT UPDATES)
 exports.saveSyllabus = async (req, res) => {
     try {
         const instituteId = getInstituteId(req);
         
-        //  ALIGNED WITH NEW FRONTEND PAYLOAD
-        const { course_id, specialization_id, batch_id, status, semester_number, syllabus_code, subjects } = req.body;
-
-        if (!course_id || !batch_id || !subjects) {
-            return res.status(400).json({ success: false, message: "Course, Batch, and Subjects are required." });
+        const { course_id, specialization_id, batch_id, status, semester_number, syllabus_code } = req.body;
+        
+        // 🚀 CRITICAL FIX: FormData sends arrays as strings. We MUST parse it back into an array!
+        let subjects = req.body.subjects;
+        if (typeof subjects === 'string') {
+            try {
+                subjects = JSON.parse(subjects);
+            } catch (e) {
+                subjects = [];
+            }
         }
 
-        // 1. Fetch Real Names from IDs (Matches DB Table schema safely)
+        if (!course_id || !batch_id || !subjects || !Array.isArray(subjects)) {
+            return res.status(400).json({ success: false, message: "Course, Batch, and valid Subjects are required." });
+        }
+
+        // 1. Fetch Real Names from IDs
         const [cRows] = await db.query("SELECT name FROM courses WHERE id = ?", [course_id]);
         const course_name = cRows[0]?.name || 'Unknown Course';
 
@@ -36,7 +45,10 @@ exports.saveSyllabus = async (req, res) => {
         const semNum = parseInt(semester_number) || 1;
         const code = syllabus_code || 'AUTO-GEN';
 
-        // 2. Prepare 2D array for MySQL Bulk Insert
+        // 🚀 Capture the uploaded file path
+        const filePath = req.file ? `/uploads/syllabus/${req.file.filename}` : null;
+
+        // 2. Prepare 2D array for MySQL Bulk Insert (Must be exactly 17 values to match the Model)
         const allSubjects = [];
         subjects.forEach(sub => {
             allSubjects.push([
@@ -45,7 +57,7 @@ exports.saveSyllabus = async (req, res) => {
                 spec_name, 
                 batch_name, 
                 semNum,
-                code, // The new Auto-Generated Code
+                code, 
                 sub.name || 'Untitled Subject', 
                 sub.code || 'PENDING', 
                 sub.faculty || 'Unassigned', 
@@ -55,7 +67,8 @@ exports.saveSyllabus = async (req, res) => {
                 parseInt(sub.laboratory) || 0,  
                 parseInt(sub.presentation) || 0, 
                 sub.elective ? 1 : 0,         
-                dbStatus                  
+                dbStatus,
+                filePath // 17th Value!
             ]);
         });
 
@@ -72,12 +85,14 @@ exports.saveSyllabus = async (req, res) => {
     }
 };
 
-//  GET /api/admin/syllabus/form-data
+// 🚀 Alias the update function to saveSyllabus. 
+exports.updateSyllabus = exports.saveSyllabus;
+
+// ── GET /api/admin/syllabus/form-data ──
 exports.getFormData = async (req, res) => {
     try {
         const instituteId = getInstituteId(req);
 
-        // FIXED: Using 'courses' instead of 'academic_courses' to match your earlier schema
         const [courses] = await db.query("SELECT id, name, code FROM courses WHERE institute_id = ?", [instituteId]).catch(() => [[]]);
         const [batches] = await db.query("SELECT id, name FROM batches WHERE institute_id = ?", [instituteId]).catch(() => [[]]);
         
@@ -91,9 +106,20 @@ exports.getFormData = async (req, res) => {
             FROM employees WHERE staffType = 'Academic' AND status = 'Active'
         `).catch(() => [[]]);
 
+        // 🚀 NEW: Fetch the master subject list from the database
+        const [subjectMaster] = await db.query(`
+            SELECT id, name, code FROM subjects WHERE institute_id = ?
+        `, [instituteId]).catch(() => [[]]);
+
         res.status(200).json({
             success: true,
-            data: { courses: courses || [], specializations: specializations || [], batches: batches || [], faculty: faculty || [] }
+            data: { 
+                courses: courses || [], 
+                specializations: specializations || [], 
+                batches: batches || [], 
+                faculty: faculty || [],
+                subjectMaster: subjectMaster || [] // 🚀 Sent to frontend!
+            }
         });
     } catch (error) {
         console.error("Syllabus Form Data Error :", error.message);
@@ -101,18 +127,19 @@ exports.getFormData = async (req, res) => {
     }
 };
 
-//  GET /api/admin/syllabus
+// ── GET /api/admin/syllabus ──
 exports.getSyllabus = async (req, res) => {
     try {
         const instituteId = getInstituteId(req);
-        const { course, batch } = req.query;
+        // 🚀 UPDATED: Includes specialization and syllabus_code checks for Edit functionality
+        const { course, batch, specialization, syllabus_code } = req.query;
         
         let results;
-        if (course && batch) {
-            // Filter specific subjects
-            results = await SyllabusModel.getByFilter(instituteId, course, batch);
+        if (syllabus_code) {
+            results = await SyllabusModel.getByCode(instituteId, syllabus_code);
+        } else if (course && batch) {
+            results = await SyllabusModel.getByFilter(instituteId, course, batch, specialization);
         } else {
-            //  FIXED: Fetch all for the List View
             results = await SyllabusModel.getAll(instituteId);
         }
         
@@ -123,11 +150,16 @@ exports.getSyllabus = async (req, res) => {
     }
 };
 
+// ── DELETE /api/admin/syllabus/:id ──
 exports.deleteSyllabus = async (req, res) => {
     try {
-        await db.query("DELETE FROM syllabus_subjects WHERE id = ?", [req.params.id]);
+        const instituteId = getInstituteId(req);
+        const syllabusCode = req.params.id; // 🚀 UPDATED: We pass the syllabus_code from frontend to delete the entire group
+        
+        await SyllabusModel.deleteByCode(instituteId, syllabusCode);
         res.status(200).json({ success: true, message: "Deleted" });
     } catch (error) {
+        console.error("Delete Error:", error);
         res.status(500).json({ success: false });
     }
 };

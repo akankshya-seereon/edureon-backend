@@ -1,7 +1,7 @@
 const db = require('../../config/db');
 
 const SyllabusModel = {
-    // 🚀 1. Saves the syllabus for ONE specific semester without deleting the others
+    // 🚀 1. Saves the syllabus for ONE specific semester
     saveBulk: async (instituteId, course, spec, batch, semester, subjectsArray) => {
         // Delete ONLY this specific semester to prevent duplicates
         await db.query(
@@ -11,10 +11,9 @@ const SyllabusModel = {
 
         if (subjectsArray.length === 0) return true;
 
-        // Insert the new semester subjects (Explicitly including syllabus_code)
         const query = `
             INSERT INTO syllabus_subjects 
-            (institute_id, course_name, specialization, batch, semester, syllabus_code, subject_name, subject_code, faculty_name, marking_system, int_marks, uni_marks, lab_marks, pres_marks, is_elective, status) 
+            (institute_id, course_name, specialization, batch, semester, syllabus_code, subject_name, subject_code, faculty_name, marking_system, int_marks, uni_marks, lab_marks, pres_marks, is_elective, status, file_path) 
             VALUES ?
         `;
         
@@ -22,16 +21,31 @@ const SyllabusModel = {
         return result;
     },
 
-    // 🚀 2. Used for showing individual subjects inside the builder
-    getByFilter: async (instituteId, course, batch) => {
+    // 🚀 2. Used for the "View Syllabus" screen filters
+    getByFilter: async (instituteId, course, batch, spec) => {
+        let query = "SELECT * FROM syllabus_subjects WHERE institute_id = ? AND course_name = ? AND batch = ?";
+        let params = [instituteId, course, batch];
+        
+        if (spec) {
+            query += " AND specialization = ?";
+            params.push(spec);
+        }
+        query += " ORDER BY semester ASC, id ASC";
+
+        const [rows] = await db.query(query, params);
+        return rows;
+    },
+
+    // 🚀 3. Used when clicking "Edit" to load a specific syllabus
+    getByCode: async (instituteId, syllabusCode) => {
         const [rows] = await db.query(
-            "SELECT * FROM syllabus_subjects WHERE institute_id = ? AND course_name = ? AND batch = ? ORDER BY semester ASC, id ASC", 
-            [instituteId, course, batch]
+            "SELECT * FROM syllabus_subjects WHERE institute_id = ? AND syllabus_code = ? ORDER BY semester ASC, id ASC", 
+            [instituteId, syllabusCode]
         );
         return rows;
     },
 
-    // 🚀 3. FIXED: The missing 'getAll' function used for the List View screen!
+    // 🚀 4. Used for the List View screen
     getAll: async (instituteId) => {
         const [rows] = await db.query(`
             SELECT 
@@ -42,13 +56,23 @@ const SyllabusModel = {
                 specialization as specialization_name, 
                 batch as batch_name, 
                 semester as semester_number, 
-                status
+                status,
+                MAX(file_path) as file_path
             FROM syllabus_subjects 
             WHERE institute_id = ?
             GROUP BY syllabus_code, course_name, specialization, batch, semester, status
             ORDER BY created_at DESC
         `, [instituteId]);
         return rows;
+    },
+
+    // 🚀 5. Safely delete an entire syllabus by its code
+    deleteByCode: async (instituteId, syllabusCode) => {
+        const [result] = await db.query(
+            "DELETE FROM syllabus_subjects WHERE institute_id = ? AND syllabus_code = ?", 
+            [instituteId, syllabusCode]
+        );
+        return result;
     }
 };
 
