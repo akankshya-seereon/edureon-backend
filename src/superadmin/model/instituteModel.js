@@ -160,4 +160,4 @@ const InstituteModel = {
   },
 };
 
-module.exports = InstituteModel;
+module.exports = InstituteModel; 

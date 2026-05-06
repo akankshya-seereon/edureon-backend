@@ -25,8 +25,12 @@ const allowBoth = (req, res, next) => {
     const token   = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key');
     req.user = decoded;
-    const allowed = ['super_admin', 'institute_admin', 'admin', 'principal', 'accountant', 'hod'];
-    if (!allowed.includes(decoded.role)) {
+    
+    // 🚀 CRITICAL FIX: Normalize role to remove underscores (super_admin -> superadmin)
+    const normalizedRole = String(decoded.role || '').toLowerCase().replace(/[^a-z]/g, '');
+    const allowed = ['superadmin', 'instituteadmin', 'admin', 'principal', 'accountant', 'hod'];
+    
+    if (!allowed.includes(normalizedRole)) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
     next();

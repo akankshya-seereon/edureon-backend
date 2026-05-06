@@ -47,7 +47,11 @@ const protect = async (req, res, next) => {
     // ==========================================
     // 🚀 3. THE MASTER KEY: IMPERSONATION LOGIC
     // ==========================================
-    if (admin.role === 'superadmin' || admin.role === 'super_admin') {
+    
+    // 🚀 CRITICAL FIX: Normalize the role to handle "SUPER ADMIN", "SuperAdmin", etc.
+    const normalizedRole = String(admin.role || '').toLowerCase().replace(/[^a-z]/g, '');
+
+    if (normalizedRole === 'superadmin') {
       // Look for the Ghost Header sent by Axios
       const managedInstituteId = req.headers['x-managed-institute-id'];
       
