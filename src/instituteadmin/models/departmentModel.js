@@ -31,6 +31,7 @@ const DepartmentModel = {
   `, [instituteId]);
   return rows;
 },
+
   // ─── CREATE ────────────────────────────────────────────────────────────────
   create: async (instituteId, data) => {
     const sanitize = (val) => (val === '' || val === undefined ? null : val);

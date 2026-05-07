@@ -8,10 +8,12 @@ console.log('✅ Loading Department Routes...');
 // All department routes require a valid token
 router.use(verifyToken);
 
-// ── BUILDINGS ──────────────────────────────────────────────────────────────
-// Registered here as /buildings → accessible at /api/admin/departments/buildings
-// The frontend must call /api/admin/departments/buildings (fixed in Department.jsx)
+// ── BUILDINGS & INFRASTRUCTURE ─────────────────────────────────────────────
+// Must be declared before /:id dynamic routes
 router.get('/buildings', departmentController.getBuildings);
+
+// 🚀 NEW: Dedicated endpoint for smart cascading room assignments
+router.get('/infrastructure', departmentController.getInfrastructureData);
 
 // ── DEPARTMENTS CRUD ───────────────────────────────────────────────────────
 router.get('/', departmentController.getDepartments);

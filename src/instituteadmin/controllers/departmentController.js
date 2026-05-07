@@ -20,20 +20,21 @@ const sanitizeData = (data) => {
     return sanitized;
 };
 
-// 🚀 FIXED: Get the STRING code (e.g., SAM751030) for departments table
+// Get the STRING code (e.g., SAM751030) for departments table
 const getInstituteCode = (req) =>
     req.user?.code || 'DEFAULT_CODE';
 
-// 🚀 FIXED: Get the INTEGER id (e.g., 1) for rooms table
+// Get the INTEGER id (e.g., 1) for rooms and buildings tables
 const getInstituteId = (req) =>
     req.user?.institute_id || req.user?.id || 1;
 
-const resolveBuildingId = async (buildingName) => {
+// 🚀 FIXED: Now securely checks for the building INSIDE the specific institute
+const resolveBuildingId = async (buildingName, instituteId) => {
     if (!buildingName || buildingName.trim() === '') return null;
     try {
         const [rows] = await db.query(
-            `SELECT id FROM buildings WHERE name = ? LIMIT 1`,
-            [buildingName.trim()]
+            `SELECT id FROM buildings WHERE name = ? AND institute_id = ? LIMIT 1`,
+            [buildingName.trim(), instituteId]
         );
         return rows.length > 0 ? rows[0].id : null;
     } catch (err) {
@@ -58,16 +59,55 @@ const departmentController = {
         }
     },
 
-    // ── GET ALL BUILDINGS ──────────────────────────────────────
+    // ── GET ALL BUILDINGS (Fallback) ───────────────────────────
     getBuildings: async (req, res) => {
         try {
-            const [buildings] = await db.query(`SELECT id, name FROM buildings ORDER BY name ASC`);
+            const instituteId = getInstituteId(req);
+            // 🚀 FIXED: Only fetch buildings assigned to this institute
+            const [buildings] = await db.query(
+                `SELECT id, name FROM buildings WHERE institute_id = ? ORDER BY name ASC`,
+                [instituteId]
+            );
             if (!buildings || buildings.length === 0) {
-                return res.json({ success: true, data: HARDCODED_BUILDINGS });
+                return res.json({ success: true, data: [] });
             }
             res.json({ success: true, data: buildings });
         } catch (error) {
-            res.json({ success: true, data: HARDCODED_BUILDINGS });
+            res.json({ success: true, data: [] });
+        }
+    },
+
+    // ── 🚀 NEW: GET INFRASTRUCTURE (Buildings + Rooms) ─────────
+    getInfrastructureData: async (req, res) => {
+        try {
+            const instituteId = getInstituteId(req);
+            
+            // 🚀 FIXED: Only fetch buildings for this specific institute
+            const [buildings] = await db.query(
+                `SELECT id, name FROM buildings WHERE institute_id = ? ORDER BY name ASC`,
+                [instituteId]
+            );
+            
+            // Fetch Rooms with their associated Blocks and Floors
+            const [rooms] = await db.query(`
+              SELECT 
+                r.id, 
+                r.room_no as name, 
+                b.name as building, 
+                r.block, 
+                r.floor 
+              FROM rooms r 
+              LEFT JOIN buildings b ON r.building_id = b.id 
+              WHERE r.institute_id = ?
+            `, [instituteId]);
+
+            res.json({ 
+                success: true, 
+                data: { buildings, rooms } 
+            });
+        } catch (error) {
+            console.error('❌ Get Infrastructure Error:', error.message);
+            res.status(500).json({ success: false, message: 'Server error while fetching infrastructure.' });
         }
     },
 
@@ -124,7 +164,6 @@ const departmentController = {
     // ── ASSIGN ROOM TO DEPARTMENT ──────────────────────────────
     assignRoom: async (req, res) => {
         try {
-            // 🚀 FIXED: Using integer ID for rooms table, but string CODE for departments check
             const instituteId = getInstituteId(req);
             const instituteCode = getInstituteCode(req);
             
@@ -143,9 +182,16 @@ const departmentController = {
             if (deptRows.length === 0) return res.status(404).json({ success: false, message: 'Dept not found.' });
             const deptName = deptRows[0].department_name;
 
-            let buildingId = await resolveBuildingId(building);
-            if (!buildingId) {
-                buildingId = 1; // Fallback
+            // 2. Safely resolve or create the building for this specific institute
+            let buildingId = await resolveBuildingId(building, instituteId);
+            
+            // 🚀 FIXED: If the building doesn't exist for this institute, create it dynamically!
+            if (!buildingId && building && building.trim() !== '') {
+                const [newBldg] = await db.query(
+                    `INSERT INTO buildings (name, institute_id) VALUES (?, ?)`, 
+                    [building.trim(), instituteId]
+                );
+                buildingId = newBldg.insertId;
             }
 
             // 3. Check if room already exists for this institute (using integer institute_id)
@@ -160,7 +206,7 @@ const departmentController = {
                     `UPDATE rooms 
                      SET building_id = ?, type = ?, block = ?, floor = ?, department_id = ? 
                      WHERE id = ? AND institute_id = ?`,
-                    [buildingId, type || 'Classroom', block || null, floor || null, departmentId, existingRoom[0].id, instituteId]
+                    [buildingId || null, type || 'Classroom', block || null, floor || null, departmentId, existingRoom[0].id, instituteId]
                 );
             } else {
                 // ── Room doesn't exist → INSERT ── 
@@ -168,7 +214,7 @@ const departmentController = {
                     `INSERT INTO rooms 
                         (room_no, building_id, block, floor, type, institute_id, department_id) 
                      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                    [room.trim(), buildingId, block || null, floor || null, type || 'Classroom', instituteId, departmentId]
+                    [room.trim(), buildingId || null, block || null, floor || null, type || 'Classroom', instituteId, departmentId]
                 );
             }
 
