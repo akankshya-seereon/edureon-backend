@@ -20,8 +20,13 @@ const sanitizeData = (data) => {
     return sanitized;
 };
 
+// 🚀 FIXED: Get the STRING code (e.g., SAM751030) for departments table
+const getInstituteCode = (req) =>
+    req.user?.code || 'DEFAULT_CODE';
+
+// 🚀 FIXED: Get the INTEGER id (e.g., 1) for rooms table
 const getInstituteId = (req) =>
-    req.user?.code || req.user?.institute_id || req.user?.instituteId || 1;
+    req.user?.institute_id || req.user?.id || 1;
 
 const resolveBuildingId = async (buildingName) => {
     if (!buildingName || buildingName.trim() === '') return null;
@@ -44,8 +49,8 @@ const departmentController = {
     // ── GET ALL DEPARTMENTS ────────────────────────────────────
     getDepartments: async (req, res) => {
         try {
-            const instituteId = getInstituteId(req);
-            const departments = await DepartmentModel.getAll(instituteId);
+            const instituteCode = getInstituteCode(req);
+            const departments = await DepartmentModel.getAll(instituteCode);
             res.json({ success: true, data: departments });
         } catch (error) {
             console.error('❌ Get Departments Error:', error.message);
@@ -69,7 +74,7 @@ const departmentController = {
     // ── CREATE DEPARTMENT ──────────────────────────────────────
     createDepartment: async (req, res) => {
         try {
-            const instituteId = getInstituteId(req);
+            const instituteCode = getInstituteCode(req);
             const { name, category } = req.body;
 
             if (!name || !category) {
@@ -81,7 +86,7 @@ const departmentController = {
             cleanData.room_number = cleanData.noOfRooms ?? cleanData.roomNumber ?? null;
             cleanData.head = cleanData.hodId ?? null;
 
-            const insertId = await DepartmentModel.create(instituteId, cleanData);
+            const insertId = await DepartmentModel.create(instituteCode, cleanData);
             res.status(201).json({ success: true, message: 'Department created!', insertId });
         } catch (error) {
             console.error('❌ Create Error:', error);
@@ -92,13 +97,13 @@ const departmentController = {
     // ── UPDATE DEPARTMENT ──────────────────────────────────────
     updateDepartment: async (req, res) => {
         try {
-            const instituteId = getInstituteId(req);
+            const instituteCode = getInstituteCode(req);
             const cleanData = sanitizeData(req.body);
             
             cleanData.room_number = cleanData.noOfRooms ?? cleanData.roomNumber ?? null;
             cleanData.head = cleanData.hodId ?? null;
 
-            const affectedRows = await DepartmentModel.update(req.params.id, instituteId, cleanData);
+            const affectedRows = await DepartmentModel.update(req.params.id, instituteCode, cleanData);
             res.json({ success: true, message: 'Updated successfully.' });
         } catch (error) {
             res.status(500).json({ success: false, message: error.sqlMessage || error.message });
@@ -108,8 +113,8 @@ const departmentController = {
     // ── DELETE DEPARTMENT ──────────────────────────────────────
     deleteDepartment: async (req, res) => {
         try {
-            const instituteId = getInstituteId(req);
-            await DepartmentModel.delete(req.params.id, instituteId);
+            const instituteCode = getInstituteCode(req);
+            await DepartmentModel.delete(req.params.id, instituteCode);
             res.json({ success: true, message: 'Deleted successfully.' });
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
@@ -119,46 +124,46 @@ const departmentController = {
     // ── ASSIGN ROOM TO DEPARTMENT ──────────────────────────────
     assignRoom: async (req, res) => {
         try {
+            // 🚀 FIXED: Using integer ID for rooms table, but string CODE for departments check
             const instituteId = getInstituteId(req);
+            const instituteCode = getInstituteCode(req);
+            
             const { departmentId, building, block, floor, room, type } = req.body;
 
             if (!departmentId || !room) {
                 return res.status(400).json({ success: false, message: 'Dept ID and Room No are required.' });
             }
 
-            // 1. Verify department exists to get the friendly name for the success message
+            // 1. Verify department exists using institute_code
             const [deptRows] = await db.query(
                 `SELECT id, department_name FROM departments WHERE id = ? AND institute_code = ? LIMIT 1`,
-                [departmentId, instituteId]
+                [departmentId, instituteCode]
             );
 
             if (deptRows.length === 0) return res.status(404).json({ success: false, message: 'Dept not found.' });
             const deptName = deptRows[0].department_name;
 
-            // 2. Resolve building_id safely
-            // Because your DB requires building_id to be NOT NULL, we MUST provide an integer.
             let buildingId = await resolveBuildingId(building);
             if (!buildingId) {
-                // If building is missing, fallback to 1 so the DB doesn't crash on the NOT NULL constraint
-                buildingId = 1; 
+                buildingId = 1; // Fallback
             }
 
-            // 3. Check if room already exists for this institute
+            // 3. Check if room already exists for this institute (using integer institute_id)
             const [existingRoom] = await db.query(
                 `SELECT id FROM rooms WHERE room_no = ? AND institute_id = ?`,
                 [room.trim(), instituteId]
             );
 
             if (existingRoom.length > 0) {
-                // ── Room exists → UPDATE ── (Matches exactly with your DB schema)
+                // ── Room exists → UPDATE ── 
                 await db.query(
                     `UPDATE rooms 
                      SET building_id = ?, type = ?, block = ?, floor = ?, department_id = ? 
-                     WHERE id = ?`,
-                    [buildingId, type || 'Classroom', block || null, floor || null, departmentId, existingRoom[0].id]
+                     WHERE id = ? AND institute_id = ?`,
+                    [buildingId, type || 'Classroom', block || null, floor || null, departmentId, existingRoom[0].id, instituteId]
                 );
             } else {
-                // ── Room doesn't exist → INSERT ── (Matches exactly with your DB schema)
+                // ── Room doesn't exist → INSERT ── 
                 await db.query(
                     `INSERT INTO rooms 
                         (room_no, building_id, block, floor, type, institute_id, department_id) 

@@ -2,7 +2,7 @@ const db = require('../../config/db');
 
 const BatchModel = {
   // Fetch all batches with section details and student counts
-  async getAll(instituteCode) {
+  async getAll(instituteId) {
     const query = `
       SELECT 
         b.*, 
@@ -14,10 +14,10 @@ const BatchModel = {
       FROM batches b
       LEFT JOIN faculty f1 ON b.proctor_id = f1.id
       LEFT JOIN faculty f2 ON b.hod_id = f2.id
-      WHERE b.institute_code = ?
+      WHERE b.institute_id = ?  /* 🚀 FIXED: Changed from institute_code */
       ORDER BY b.created_at DESC
     `;
-    const [batches] = await db.query(query, [instituteCode]);
+    const [batches] = await db.query(query, [instituteId]);
     if (batches.length === 0) return [];
 
     const batchIds = batches.map(b => b.id);
@@ -60,7 +60,7 @@ const BatchModel = {
     }
   },
 
-  async getById(id, instituteCode) {
+  async getById(id, instituteId) {
     const [rows] = await db.query(`
       SELECT 
         b.*, 
@@ -71,8 +71,8 @@ const BatchModel = {
       FROM batches b
       LEFT JOIN faculty f1 ON b.proctor_id = f1.id
       LEFT JOIN faculty f2 ON b.hod_id = f2.id
-      WHERE b.id = ? AND b.institute_code = ?
-    `, [id, instituteCode]);
+      WHERE b.id = ? AND b.institute_id = ? /* 🚀 FIXED: Changed from institute_code */
+    `, [id, instituteId]);
     
     if (rows.length === 0) return null;
     const batch = rows[0];
@@ -82,10 +82,13 @@ const BatchModel = {
     return batch;
   },
 
-  async delete(id, instituteCode) {
-    const [result] = await db.query(`DELETE FROM batches WHERE id = ? AND institute_code = ?`, [id, instituteCode]);
+  async delete(id, instituteId) {
+    const [result] = await db.query(
+        `DELETE FROM batches WHERE id = ? AND institute_id = ?`, /* 🚀 FIXED */
+        [id, instituteId]
+    );
     return result.affectedRows;
   }
 };
 
-module.exports = BatchModel; 
+module.exports = BatchModel;

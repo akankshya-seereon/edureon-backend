@@ -22,12 +22,12 @@ const CertificateModel = {
   },
 
   async getAllByInstitute(instituteId, filters = {}) {
-    // 🚀 FIX: Strictly using first_name and last_name since full_name and name do not exist in the DB
+    // 🚀 FIXED: Changed c.course_name to c.name AS course_name to match your DB schema
     let query = `
       SELECT d.*, 
              CONCAT(s.first_name, ' ', s.last_name) AS student_name, 
              s.email AS student_email, 
-             c.course_name 
+             c.name AS course_name 
       FROM student_documents d
       LEFT JOIN students s ON d.student_id = s.id
       LEFT JOIN courses c ON d.course_id = c.id

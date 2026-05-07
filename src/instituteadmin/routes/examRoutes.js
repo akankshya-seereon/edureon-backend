@@ -6,19 +6,16 @@ const path = require('path');
 const examController = require('../controllers/examController');
 const { verifyToken } = require('../middlewares/authMiddleware');
 
-// 1. Ensure the uploads directory exists
 const uploadDir = path.join(__dirname, '../../../../uploads/question_papers');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// 2. Configure Multer Storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir); // Save to our new folder
+    cb(null, uploadDir); 
   },
   filename: (req, file, cb) => {
-    // Add a timestamp to the filename to prevent overwriting
     cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '_')); 
   }
 });
@@ -26,24 +23,22 @@ const upload = multer({ storage });
 
 // ─── ROUTES ────────────────────────────────────────────────────────────
 
-router.get('/', verifyToken, examController.getExams);
+// 🚀 NEW: Get Form Data MUST be before /:id routes
+router.get('/form-data', verifyToken, examController.getFormData);
 
-// 🚀 POST now uses multer to catch 'question_paper'
+router.get('/', verifyToken, examController.getExams);
 router.post('/', verifyToken, upload.single('question_paper'), examController.addExam);
 
-router.delete('/:id', verifyToken, examController.deleteExam);
+// 🚀 NEW: Update Route (PUT)
+router.put('/:id', verifyToken, upload.single('question_paper'), examController.updateExam);
 
-// Route specifically for downloading the PDF
+router.delete('/:id', verifyToken, examController.deleteExam);
 router.get('/download/:id', verifyToken, examController.downloadPaper);
 
 // ==========================================
-// 🚀 NEW: MARKS ENTRY ROUTES
+// MARKS ENTRY ROUTES
 // ==========================================
-
-// 1. Fetch students for a specific exam's batch
 router.get('/:id/students', verifyToken, examController.getExamStudents);
-
-// 2. Save the array of student marks
 router.post('/results', verifyToken, examController.saveResults);
 
 module.exports = router;

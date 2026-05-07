@@ -1,12 +1,17 @@
 const BatchModel = require('../models/batchModel');
 const db = require('../../config/db'); 
 
+// 🎯 HELPER: Consistently grab the integer ID
+const getInstituteId = (req) => req.user.institute_id || req.user.id || 1;
+
 // --- 📋 BATCH CRUD ---
 
 // 1. Get all batches
 exports.getBatches = async (req, res) => {
   try {
-    const batches = await BatchModel.getAll(req.user.code);
+    const instituteId = getInstituteId(req);
+    // 🚀 FIXED: Passing integer ID instead of string code
+    const batches = await BatchModel.getAll(instituteId);
     res.json({ success: true, batches });
   } catch (err) {
     console.error("SQL ERROR IN getBatches:", err);
@@ -14,10 +19,12 @@ exports.getBatches = async (req, res) => {
   }
 };
 
-// 2. Get batch by ID (🚀 Re-added to prevent crash)
+// 2. Get batch by ID
 exports.getBatchById = async (req, res) => {
   try {
-    const batch = await BatchModel.getById(req.params.id, req.user.code);
+    const instituteId = getInstituteId(req);
+    // 🚀 FIXED: Passing integer ID
+    const batch = await BatchModel.getById(req.params.id, instituteId);
     if (!batch) return res.status(404).json({ success: false, message: "Not found" });
     res.json({ success: true, batch });
   } catch (err) {
@@ -26,11 +33,15 @@ exports.getBatchById = async (req, res) => {
   }
 };
 
-// 3. Create Batch (🚀 Re-added to prevent crash)
+// 3. Create Batch
 exports.createBatch = async (req, res) => {
   try {
+    const instituteId = getInstituteId(req);
     const { sections, studentIds, ...mainData } = req.body;
-    const batchData = { ...mainData, institute_code: req.user.code };
+    
+    // 🚀 FIXED: Saving institute_id instead of institute_code to match DB schema
+    const batchData = { ...mainData, institute_id: instituteId };
+    
     const batchId = await BatchModel.create(batchData, sections, studentIds);
     res.status(201).json({ success: true, batchId });
   } catch (err) {
@@ -39,10 +50,12 @@ exports.createBatch = async (req, res) => {
   }
 };
 
-// 4. Delete Batch (🚀 Re-added to prevent crash)
+// 4. Delete Batch
 exports.deleteBatch = async (req, res) => {
   try {
-    await BatchModel.delete(req.params.id, req.user.code);
+    const instituteId = getInstituteId(req);
+    // 🚀 FIXED: Passing integer ID
+    await BatchModel.delete(req.params.id, instituteId);
     res.json({ success: true, message: "Deleted" });
   } catch (err) {
     console.error("SQL ERROR IN deleteBatch:", err);
@@ -82,7 +95,7 @@ exports.assignFacultyToBatch = async (req, res) => {
     await connection.beginTransaction();
 
     const { batchId, subjectId, facultyId, schedule, roomNo } = req.body;
-    const adminId = req.user.id; 
+    const adminId = getInstituteId(req); 
     const instCode = req.user.code;
 
     // 1. Fetch Details (Using explicit JOIN for better performance)

@@ -7,11 +7,10 @@ const path = require('path');
 exports.generateMarksheet = async (req, res) => {
   try {
     const { studentId, courseId, batch, semester, studentName, instituteName, courseName, marks } = req.body;
-    const instituteId = req.user.id; 
+    const instituteId = req.user.id || req.user.institute_id; // Added fallback just in case
 
     // --- 🚀 DIRECTORY GUARD ---
-    // This ensures the folder exists on the hard drive before we try to save a file to it.
-    const uploadDir = path.join(__dirname, '../../../uploads/certificates');
+    const uploadDir = path.join(__dirname, '../../../../uploads/certificates'); // Adjusted path to sit in root/uploads
     if (!fs.existsSync(uploadDir)) {
       console.log('📂 Creating missing directory:', uploadDir);
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -24,7 +23,6 @@ exports.generateMarksheet = async (req, res) => {
     }
 
     // Generate the physical PDF via the utility service
-    // Ensure your pdfService uses an absolute path to save the file!
     const fileUrl = await pdfService.generateMarksheetPDF({
       studentId, studentName, instituteName, courseName, batch, semester, marks
     });
@@ -50,7 +48,7 @@ exports.generateMarksheet = async (req, res) => {
 // 2. Fetch all documents for the Admin UI Table
 exports.getDocuments = async (req, res) => {
   try {
-    const instituteId = req.user.id;
+    const instituteId = req.user.id || req.user.institute_id;
     const { courseId, batch, semester, status } = req.query;
 
     const documents = await CertificateModel.getAllByInstitute(instituteId, { courseId, batch, semester, status });
@@ -65,7 +63,7 @@ exports.getDocuments = async (req, res) => {
 // 3. Publish Documents (Make them visible to students)
 exports.publishDocuments = async (req, res) => {
   try {
-    const instituteId = req.user.id;
+    const instituteId = req.user.id || req.user.institute_id;
     const { documentIds } = req.body; 
 
     if (!documentIds || !documentIds.length) {
@@ -84,7 +82,7 @@ exports.publishDocuments = async (req, res) => {
 // 4. Delete a Draft Document
 exports.deleteDocument = async (req, res) => {
   try {
-    const instituteId = req.user.id;
+    const instituteId = req.user.id || req.user.institute_id;
     const { id } = req.params;
 
     const deletedCount = await CertificateModel.delete(id, instituteId);
